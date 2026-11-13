@@ -9,16 +9,18 @@ from SourceIO.library.models.mdl.v49.mdl_file import MdlV49
 from SourceIO.library.source1.authoring import (
     Source1ArtifactRoot,
     Source1AuthoringBackend,
+    Source1AuthoringCollision,
+    Source1AuthoringLod,
     Source1AuthoringPlan,
     Source1AuthoringRequest,
     Source1AuthoringService,
     Source1AuthoringTarget,
+    Source1ExtractedAuthoringModel,
 )
 from SourceIO.library.source1.vtf import load_texture
 from SourceIO.library.source2.authoring import (
     AuthoringMaterial,
     AuthoringTexture,
-    ExtractedAuthoringModel,
     MaterialAlphaMode,
     TextureRole,
     solid_color_tga,
@@ -323,7 +325,7 @@ def configured_installation(
     return SourceSdk2013Installation.discover(profile, configured_root)
 
 
-def _fixture_model(asset_name: str) -> ExtractedAuthoringModel:
+def _fixture_model(asset_name: str) -> Source1ExtractedAuthoringModel:
     vertices = (
         MeshVertex(
             (0.0, 0.0, 0.0),
@@ -345,6 +347,53 @@ def _fixture_model(asset_name: str) -> ExtractedAuthoringModel:
                 f"{asset_name}_mesh",
                 vertices,
                 (MeshFace((0, 1, 2), "probe"),),
+            ),
+        ),
+    )
+    lod_document = ModelDocument(
+        f"{asset_name}_lod1",
+        (
+            StaticMesh(
+                f"{asset_name}_lod1_mesh",
+                (
+                    vertices[0],
+                    MeshVertex(
+                        (8.0, 0.0, 0.0),
+                        CornerData(
+                            normal=(0.0, 0.0, 1.0),
+                            texcoords=((1.0, 1.0),),
+                        ),
+                    ),
+                    MeshVertex(
+                        (0.0, 4.0, 0.0),
+                        CornerData(
+                            normal=(0.0, 0.0, 1.0),
+                            texcoords=((0.0, 0.0),),
+                        ),
+                    ),
+                ),
+                (MeshFace((0, 1, 2), "probe"),),
+            ),
+        ),
+    )
+    collision_vertices = (
+        MeshVertex((0.0, 0.0, 0.0), CornerData(normal=(0.0, 0.0, -1.0))),
+        MeshVertex((16.0, 0.0, 0.0), CornerData(normal=(0.0, 0.0, -1.0))),
+        MeshVertex((0.0, 8.0, 0.0), CornerData(normal=(0.0, 0.0, -1.0))),
+        MeshVertex((0.0, 0.0, 8.0), CornerData(normal=(0.0, 0.0, 1.0))),
+    )
+    collision_document = ModelDocument(
+        f"{asset_name}_collision",
+        (
+            StaticMesh(
+                f"{asset_name}_collision_mesh",
+                collision_vertices,
+                (
+                    MeshFace((0, 2, 1), "collision"),
+                    MeshFace((0, 1, 3), "collision"),
+                    MeshFace((1, 2, 3), "collision"),
+                    MeshFace((2, 0, 3), "collision"),
+                ),
             ),
         ),
     )
@@ -374,11 +423,13 @@ def _fixture_model(asset_name: str) -> ExtractedAuthoringModel:
             ),
         ),
     )
-    return ExtractedAuthoringModel(
+    return Source1ExtractedAuthoringModel(
         asset_name,
         document,
         b"",
         (material,),
+        Source1AuthoringCollision(collision_document, mass=10.0),
+        (Source1AuthoringLod(64.0, lod_document),),
     )
 
 
@@ -565,6 +616,11 @@ def execute_disposable_fixture(fixture: SourceSdk2013Fixture) -> dict:
         raise SourceSdk2013GateError(
             f"Compiled model version is {mdl.header.version}, expected one of "
             f"{fixture.installation.profile.expected_mdl_versions}"
+        )
+    physics_path = model_path.with_suffix(".phy")
+    if not physics_path.is_file() or physics_path.stat().st_size == 0:
+        raise SourceSdk2013GateError(
+            f"Compiled collision output is unavailable: {physics_path}"
         )
 
     texture_report = {}

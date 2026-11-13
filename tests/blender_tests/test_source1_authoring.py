@@ -16,8 +16,13 @@ from SourceIO.library.source1.authoring import (
     Source1AuthoringMaterial,
     Source1AuthoringRequest,
     Source1AuthoringTarget,
+    Source1ExtractedAuthoringModel,
 )
-from SourceIO.library.source2.authoring import TextureRole
+from SourceIO.library.source2.authoring import (
+    AuthoringGrouping,
+    AuthoringScope,
+    TextureRole,
+)
 from SourceIO.library.utils.math_utilities import (
     SOURCE1_HAMMER_UNIT_TO_METERS,
 )
@@ -44,7 +49,7 @@ class Source1AuthoringAdapterTests(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     @staticmethod
-    def mesh_object(name="crate"):
+    def mesh_object(name="crate", collection=None, *, with_uv=True):
         mesh = bpy.data.meshes.new(name)
         mesh.from_pydata(
             [(0, 0, 0), (1, 0, 0), (0, 1, 0)],
@@ -52,12 +57,13 @@ class Source1AuthoringAdapterTests(unittest.TestCase):
             [(0, 1, 2)],
         )
         mesh.update()
-        uv = mesh.uv_layers.new(name="UVMap")
-        uv.data[0].uv = (0.0, 0.0)
-        uv.data[1].uv = (1.0, 0.0)
-        uv.data[2].uv = (0.0, 1.0)
+        if with_uv:
+            uv = mesh.uv_layers.new(name="UVMap")
+            uv.data[0].uv = (0.0, 0.0)
+            uv.data[1].uv = (1.0, 0.0)
+            uv.data[2].uv = (0.0, 1.0)
         obj = bpy.data.objects.new(name, mesh)
-        bpy.context.scene.collection.objects.link(obj)
+        (collection or bpy.context.scene.collection).objects.link(obj)
         return obj
 
     @staticmethod
@@ -176,6 +182,160 @@ class Source1AuthoringAdapterTests(unittest.TestCase):
         self.assertIn('"$phong" "1"', vmt)
         self.assertIn('"$phongexponent" "16"', vmt)
         self.assertEqual(len(result.execution.compiler_results), 0)
+
+    def test_tagged_collections_extract_collision_and_lod(self):
+        reference_collection = bpy.data.collections.new("Reference")
+        collision_collection = bpy.data.collections.new("Collision")
+        lod_collection = bpy.data.collections.new("LOD 128")
+        for collection in (
+                reference_collection,
+                collision_collection,
+                lod_collection,
+        ):
+            bpy.context.scene.collection.children.link(collection)
+        reference_collection["sourceio_source1_role"] = "REFERENCE"
+        collision_collection["sourceio_source1_role"] = "COLLISION"
+        collision_collection["sourceio_source1_collision_mass"] = 24.0
+        collision_collection["sourceio_source1_collision_concave"] = True
+        lod_collection["sourceio_source1_role"] = "LOD"
+        lod_collection["sourceio_source1_lod_distance"] = 128.0
+
+        material = self.principled_material()
+        reference = self.mesh_object("reference", reference_collection)
+        collision = self.mesh_object(
+            "collision",
+            collision_collection,
+            with_uv=False,
+        )
+        lod = self.mesh_object("lod", lod_collection)
+        for obj in (reference, lod):
+            obj.data.materials.append(material)
+        reference.select_set(True)
+        bpy.context.view_layer.objects.active = reference
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(scope=AuthoringScope.SCENE),
+        )
+
+        self.assertFalse(report.has_errors)
+        self.assertEqual(len(models), 1)
+        model = models[0]
+        self.assertIsInstance(model, Source1ExtractedAuthoringModel)
+        self.assertIsNotNone(model.collision)
+        self.assertEqual(model.collision.mass, 24.0)
+        self.assertTrue(model.collision.concave)
+        self.assertEqual(len(model.lods), 1)
+        self.assertEqual(model.lods[0].distance, 128.0)
+        self.assertEqual(len(model.document.meshes), 1)
+        self.assertEqual(len(model.collision.document.meshes), 1)
+        self.assertEqual(
+            model.collision.document.meshes[0].vertices[0].corner.texcoords,
+            (),
+        )
+        self.assertEqual(len(model.lods[0].document.meshes), 1)
+        self.assertEqual(tuple(bpy.context.selected_objects), (reference,))
+        self.assertIs(bpy.context.view_layer.objects.active, reference)
+        self.assertNotIn("__SOURCEIO_AUTHORING__", bpy.data.collections)
+
+    def test_tagged_collection_overlap_is_preflight_error(self):
+        reference_collection = bpy.data.collections.new("Reference")
+        collision_collection = bpy.data.collections.new("Collision")
+        bpy.context.scene.collection.children.link(reference_collection)
+        bpy.context.scene.collection.children.link(collision_collection)
+        reference_collection["sourceio_source1_role"] = "REFERENCE"
+        collision_collection["sourceio_source1_role"] = "COLLISION"
+        obj = self.mesh_object("shared", reference_collection)
+        collision_collection.objects.link(obj)
+        obj.data.materials.append(self.principled_material())
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(scope=AuthoringScope.SCENE),
+        )
+
+        self.assertEqual(models, ())
+        self.assertIn(
+            "authoring.source1.collection.overlap",
+            {diagnostic.code for diagnostic in report},
+        )
+
+    def test_empty_tagged_collection_is_preflight_error(self):
+        collision_collection = bpy.data.collections.new("Collision")
+        bpy.context.scene.collection.children.link(collision_collection)
+        collision_collection["sourceio_source1_role"] = "COLLISION"
+        self.mesh_object("reference")
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(scope=AuthoringScope.SCENE),
+        )
+
+        self.assertEqual(models, ())
+        self.assertIn(
+            "authoring.source1.collection.empty",
+            {diagnostic.code for diagnostic in report},
+        )
+
+    def test_multiple_collision_collections_are_preflight_error(self):
+        self.mesh_object("reference")
+        for index in range(2):
+            collection = bpy.data.collections.new(f"Collision {index}")
+            bpy.context.scene.collection.children.link(collection)
+            collection["sourceio_source1_role"] = "COLLISION"
+            self.mesh_object(f"collision_{index}", collection)
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(scope=AuthoringScope.SCENE),
+        )
+
+        self.assertEqual(models, ())
+        self.assertIn(
+            "authoring.source1.collision.multiple",
+            {diagnostic.code for diagnostic in report},
+        )
+
+    def test_duplicate_lod_distances_are_preflight_error(self):
+        self.mesh_object("reference")
+        for index in range(2):
+            collection = bpy.data.collections.new(f"LOD {index}")
+            bpy.context.scene.collection.children.link(collection)
+            collection["sourceio_source1_role"] = "LOD"
+            collection["sourceio_source1_lod_distance"] = 64.0
+            self.mesh_object(f"lod_{index}", collection)
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(scope=AuthoringScope.SCENE),
+        )
+
+        self.assertEqual(models, ())
+        self.assertIn(
+            "authoring.source1.lod.distance_duplicate",
+            {diagnostic.code for diagnostic in report},
+        )
+
+    def test_batch_grouping_rejects_collision_or_lod_collections(self):
+        collision_collection = bpy.data.collections.new("Collision")
+        bpy.context.scene.collection.children.link(collision_collection)
+        collision_collection["sourceio_source1_role"] = "COLLISION"
+        self.mesh_object("reference")
+        self.mesh_object("collision", collision_collection)
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(
+                scope=AuthoringScope.SCENE,
+                grouping=AuthoringGrouping.BATCH,
+            ),
+        )
+
+        self.assertEqual(models, ())
+        self.assertIn(
+            "authoring.source1.collection.batch_unsupported",
+            {diagnostic.code for diagnostic in report},
+        )
 
     def test_imported_vmt_provenance_writes_a_local_patch(self):
         obj = self.mesh_object()

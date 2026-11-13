@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
 
+from ...source2.authoring.assets import ExtractedAuthoringModel
 from ...source2.authoring.models import (
     AuthoringGrouping,
     AuthoringScope,
 )
-from ...source2.export import LossReport
+from ...source2.export import LossReport, ModelDocument
 from ...source2.workshop import ContentRelativePath
 from .target import Source1AuthoringTarget
 
@@ -33,6 +35,64 @@ class Source1ArtifactKind(str, Enum):
 class Source1CompilerKind(str, Enum):
     VTEX = "vtex"
     STUDIOMDL = "studiomdl"
+
+
+@dataclass(frozen=True, slots=True)
+class Source1AuthoringCollision:
+    document: ModelDocument
+    mass: float | None = None
+    concave: bool = True
+
+    def __post_init__(self):
+        if not isinstance(self.document, ModelDocument):
+            raise TypeError("Source 1 collision geometry must be a ModelDocument")
+        if self.mass is not None:
+            mass = float(self.mass)
+            if not math.isfinite(mass) or mass <= 0:
+                raise ValueError("Source 1 collision mass must be finite and positive")
+            object.__setattr__(self, "mass", mass)
+        if not isinstance(self.concave, bool):
+            raise TypeError("Source 1 collision concavity must be a boolean")
+
+
+@dataclass(frozen=True, slots=True)
+class Source1AuthoringLod:
+    distance: float
+    document: ModelDocument
+
+    def __post_init__(self):
+        distance = float(self.distance)
+        if not math.isfinite(distance) or distance <= 0:
+            raise ValueError("Source 1 LOD distances must be finite and positive")
+        if not isinstance(self.document, ModelDocument):
+            raise TypeError("Source 1 LOD geometry must be a ModelDocument")
+        object.__setattr__(self, "distance", distance)
+
+
+@dataclass(frozen=True, slots=True)
+class Source1ExtractedAuthoringModel(ExtractedAuthoringModel):
+    collision: Source1AuthoringCollision | None = None
+    lods: tuple[Source1AuthoringLod, ...] = ()
+
+    def __post_init__(self):
+        ExtractedAuthoringModel.__post_init__(self)
+        if self.collision is not None and not isinstance(
+                self.collision, Source1AuthoringCollision
+        ):
+            raise TypeError(
+                "Source 1 extracted collision data must be "
+                "a Source1AuthoringCollision"
+            )
+        lods = tuple(self.lods)
+        if any(not isinstance(lod, Source1AuthoringLod) for lod in lods):
+            raise TypeError(
+                "Source 1 extracted LODs must be Source1AuthoringLod values"
+            )
+        lods = tuple(sorted(lods, key=lambda item: item.distance))
+        distances = tuple(lod.distance for lod in lods)
+        if len(set(distances)) != len(distances):
+            raise ValueError("Source 1 LOD distances must be unique")
+        object.__setattr__(self, "lods", lods)
 
 
 @dataclass(frozen=True, slots=True)

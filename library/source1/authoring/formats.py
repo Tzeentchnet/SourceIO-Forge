@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from typing import Iterable
 
 from ...source2.authoring import AuthoringMaterial, MaterialAlphaMode, TextureRole
 from ...source2.export import ModelDocument
@@ -42,6 +43,8 @@ def _smd_vector(value) -> tuple[float, float, float]:
 def serialize_smd(
         document: ModelDocument,
         material_names: set[str] | frozenset[str],
+        *,
+        require_uv: bool = True,
 ) -> str:
     lines = [
         "version 1",
@@ -74,15 +77,20 @@ def serialize_smd(
                     raise ValueError(
                         f"Source 1 SMD vertex has no normal: {mesh.name}"
                     )
-                if not vertex.corner.texcoords:
+                if require_uv and not vertex.corner.texcoords:
                     raise ValueError(
                         f"Source 1 SMD vertex has no UV map: {mesh.name}"
                     )
+                texcoord = (
+                    vertex.corner.texcoords[0]
+                    if vertex.corner.texcoords
+                    else (0.0, 0.0)
+                )
                 values = (
                     *_smd_vector(vertex.position),
                     *_smd_vector(normal),
-                    vertex.corner.texcoords[0][0],
-                    1.0 - vertex.corner.texcoords[0][1],
+                    texcoord[0],
+                    1.0 - texcoord[1],
                 )
                 lines.append("  0 " + " ".join(_float(value) for value in values))
     lines.extend(("end", ""))
@@ -95,6 +103,10 @@ def serialize_qc(
         material_directory: ContentRelativePath,
         *,
         surface_property: str = "default",
+        collision_smd_name: str | None = None,
+        collision_mass: float | None = None,
+        collision_concave: bool = True,
+        lods: Iterable[tuple[float, str]] = (),
 ) -> str:
     if model_path.parts[0].casefold() != "models":
         raise ValueError("Compiled Source 1 model paths must be below models")
@@ -102,15 +114,58 @@ def serialize_qc(
         raise ValueError("Source 1 material directories must be below materials")
     model_reference = "/".join(model_path.parts[1:])
     material_reference = "/".join(material_directory.parts[1:])
-    return "\n".join((
+    lod_entries = tuple(sorted(
+        ((float(distance), str(name)) for distance, name in lods),
+        key=lambda item: item[0],
+    ))
+    if any(not math.isfinite(distance) or distance <= 0 for distance, _ in lod_entries):
+        raise ValueError("Source 1 LOD distances must be finite and positive")
+    if len({distance for distance, _ in lod_entries}) != len(lod_entries):
+        raise ValueError("Source 1 LOD distances must be unique")
+    if collision_mass is not None:
+        collision_mass = float(collision_mass)
+        if not math.isfinite(collision_mass) or collision_mass <= 0:
+            raise ValueError("Source 1 collision mass must be finite and positive")
+    if collision_smd_name is None and (
+            collision_mass is not None or collision_concave is not True
+    ):
+        raise ValueError("Source 1 collision settings require collision geometry")
+
+    lines = [
         f"$modelname {_quoted(model_reference)}",
         f"$body {_quoted('body')} {_quoted(smd_name)}",
         "$staticprop",
         f"$surfaceprop {_quoted(surface_property)}",
         f"$cdmaterials {_quoted(material_reference)}",
+    ]
+    for distance, lod_smd_name in lod_entries:
+        lines.extend((
+            f"$lod {_float(distance)}",
+            "{",
+            (
+                f"    replacemodel {_quoted(smd_name)} "
+                f"{_quoted(lod_smd_name)}"
+            ),
+            "}",
+        ))
+    if collision_smd_name is not None:
+        lines.extend((
+            f"$collisionmodel {_quoted(collision_smd_name)}",
+            "{",
+            (
+                f"    $mass {_float(collision_mass)}"
+                if collision_mass is not None
+                else "    $automass"
+            ),
+        ))
+        if collision_concave:
+            lines.append("    $concave")
+        lines.append("}")
+    lines.extend((
         f"$sequence {_quoted('idle')} {_quoted(smd_name)} fps 1",
         "",
     ))
+    return "\n".join(lines)
 
 
 def serialize_vmt(

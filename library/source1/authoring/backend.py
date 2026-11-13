@@ -31,7 +31,20 @@ from .models import (
     Source1CompileOutput,
     Source1CompileStep,
     Source1CompilerKind,
+    Source1ExtractedAuthoringModel,
 )
+
+
+def _document_materials(document) -> frozenset[str]:
+    return frozenset(
+        face.material
+        for mesh in document.meshes
+        for face in mesh.faces
+    )
+
+
+def _document_has_faces(document) -> bool:
+    return any(mesh.faces for mesh in document.meshes)
 
 
 class Source1AuthoringBackend:
@@ -110,6 +123,14 @@ class Source1AuthoringBackend:
                 material_specs[material.name] = material
 
             material_names = frozenset(material.name for material in model.materials)
+            reference_materials = _document_materials(model.document)
+            source1_model = (
+                model
+                if isinstance(model, Source1ExtractedAuthoringModel)
+                else None
+            )
+            collision = source1_model.collision if source1_model is not None else None
+            lods = source1_model.lods if source1_model is not None else ()
             smd_name = f"{model.name}.smd"
             smd_path = asset_model_source.joinpath(smd_name)
             qc_path = asset_model_source.joinpath(f"{model.name}.qc")
@@ -132,6 +153,94 @@ class Source1AuthoringBackend:
                 Source1ArtifactKind.MODEL_SOURCE,
                 smd,
             ))
+            lod_qc_entries = []
+            for index, lod in enumerate(lods, start=1):
+                lod_smd_name = f"{model.name}_lod{index}.smd"
+                lod_smd_path = asset_model_source.joinpath(lod_smd_name)
+                lod_materials = _document_materials(lod.document)
+                if not _document_has_faces(lod.document):
+                    loss_report.record(
+                        "authoring.source1.lod.empty",
+                        "Source 1 LOD geometry must contain at least one face.",
+                        severity=DiagnosticSeverity.ERROR,
+                        loss_kind=LossKind.MISSING,
+                        details={
+                            "model": model.name,
+                            "distance": lod.distance,
+                        },
+                    )
+                if lod_materials != reference_materials:
+                    loss_report.record(
+                        "authoring.source1.lod.materials_mismatch",
+                        "Every Source 1 LOD must use the same material identities "
+                        "as the reference model.",
+                        severity=DiagnosticSeverity.ERROR,
+                        loss_kind=LossKind.SAFETY,
+                        details={
+                            "model": model.name,
+                            "distance": lod.distance,
+                            "missing": sorted(reference_materials - lod_materials),
+                            "extra": sorted(lod_materials - reference_materials),
+                        },
+                    )
+                try:
+                    lod_smd = serialize_smd(lod.document, material_names)
+                except ValueError as exc:
+                    loss_report.record(
+                        "authoring.source1.lod.smd.invalid",
+                        str(exc),
+                        severity=DiagnosticSeverity.ERROR,
+                        loss_kind=LossKind.SAFETY,
+                        details={
+                            "model": model.name,
+                            "distance": lod.distance,
+                        },
+                    )
+                    lod_smd = ""
+                add_artifact(Source1AuthoringArtifact(
+                    Source1ArtifactRoot.CONTENT,
+                    lod_smd_path,
+                    Source1ArtifactKind.MODEL_SOURCE,
+                    lod_smd,
+                ))
+                lod_qc_entries.append((lod.distance, lod_smd_name))
+
+            collision_smd_name = None
+            if collision is not None:
+                collision_smd_name = f"{model.name}_collision.smd"
+                collision_smd_path = asset_model_source.joinpath(
+                    collision_smd_name
+                )
+                collision_materials = _document_materials(collision.document)
+                if not _document_has_faces(collision.document):
+                    loss_report.record(
+                        "authoring.source1.collision.empty",
+                        "Source 1 collision geometry must contain at least one face.",
+                        severity=DiagnosticSeverity.ERROR,
+                        loss_kind=LossKind.MISSING,
+                        details={"model": model.name},
+                    )
+                try:
+                    collision_smd = serialize_smd(
+                        collision.document,
+                        collision_materials,
+                        require_uv=False,
+                    )
+                except ValueError as exc:
+                    loss_report.record(
+                        "authoring.source1.collision.smd.invalid",
+                        str(exc),
+                        severity=DiagnosticSeverity.ERROR,
+                        loss_kind=LossKind.SAFETY,
+                        details={"model": model.name},
+                    )
+                    collision_smd = ""
+                add_artifact(Source1AuthoringArtifact(
+                    Source1ArtifactRoot.CONTENT,
+                    collision_smd_path,
+                    Source1ArtifactKind.MODEL_SOURCE,
+                    collision_smd,
+                ))
             add_artifact(Source1AuthoringArtifact(
                 Source1ArtifactRoot.CONTENT,
                 qc_path,
@@ -141,28 +250,40 @@ class Source1AuthoringBackend:
                     smd_name,
                     asset_material_directory,
                     surface_property=request.surface_property,
+                    collision_smd_name=collision_smd_name,
+                    collision_mass=collision.mass if collision is not None else None,
+                    collision_concave=(
+                        collision.concave if collision is not None else True
+                    ),
+                    lods=lod_qc_entries,
                 ),
             ))
             compiled_stem = compiled_model.as_posix()[:-len(".mdl")]
+            compiled_outputs = [
+                Source1CompileOutput(
+                    Source1ArtifactRoot.GAME,
+                    compiled_model,
+                ),
+                Source1CompileOutput(
+                    Source1ArtifactRoot.GAME,
+                    f"{compiled_stem}.vvd",
+                ),
+                Source1CompileOutput(
+                    Source1ArtifactRoot.GAME,
+                    f"{compiled_stem}.dx90.vtx",
+                ),
+            ]
+            if collision is not None:
+                compiled_outputs.append(Source1CompileOutput(
+                    Source1ArtifactRoot.GAME,
+                    f"{compiled_stem}.phy",
+                ))
             compile_steps[(Source1CompilerKind.STUDIOMDL, qc_path)] = (
                 Source1CompileStep(
                     Source1CompilerKind.STUDIOMDL,
                     Source1ArtifactRoot.CONTENT,
                     qc_path,
-                    (
-                        Source1CompileOutput(
-                            Source1ArtifactRoot.GAME,
-                            compiled_model,
-                        ),
-                        Source1CompileOutput(
-                            Source1ArtifactRoot.GAME,
-                            f"{compiled_stem}.vvd",
-                        ),
-                        Source1CompileOutput(
-                            Source1ArtifactRoot.GAME,
-                            f"{compiled_stem}.dx90.vtx",
-                        ),
-                    ),
+                    tuple(compiled_outputs),
                 )
             )
 

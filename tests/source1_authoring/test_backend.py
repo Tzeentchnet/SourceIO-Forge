@@ -10,6 +10,8 @@ from SourceIO.library.source1.authoring import (
     Source1ArtifactRoot,
     Source1AuthoringArtifact,
     Source1AuthoringBackend,
+    Source1AuthoringCollision,
+    Source1AuthoringLod,
     Source1AuthoringManifest,
     Source1AuthoringManifestError,
     Source1AuthoringMaterial,
@@ -17,6 +19,7 @@ from SourceIO.library.source1.authoring import (
     Source1AuthoringService,
     Source1AuthoringTarget,
     Source1AuthoringTargetError,
+    Source1ExtractedAuthoringModel,
     Source1PhongParameters,
     serialize_qc,
     serialize_smd,
@@ -135,6 +138,22 @@ def _model(
         document or _document(),
         b"",
         (value,),
+    )
+
+
+def _source1_model(
+        *,
+        collision: Source1AuthoringCollision | None = None,
+        lods: tuple[Source1AuthoringLod, ...] = (),
+) -> Source1ExtractedAuthoringModel:
+    model = _model()
+    return Source1ExtractedAuthoringModel(
+        model.name,
+        model.document,
+        model.fbx_payload,
+        model.materials,
+        collision,
+        lods,
     )
 
 
@@ -287,6 +306,112 @@ def test_backend_plans_dual_root_editable_bundle(tmp_path):
         "crate_alpha" not in artifact.path.as_posix()
         for artifact in output.artifacts
     )
+
+
+def test_backend_authors_collision_lods_and_phy_output(tmp_path):
+    target = _target(tmp_path)
+    request = Source1AuthoringRequest(target, "crate")
+    model = _source1_model(
+        collision=Source1AuthoringCollision(
+            _document(material="collision", uv=False),
+            mass=12.5,
+        ),
+        lods=(
+            Source1AuthoringLod(40, _document()),
+            Source1AuthoringLod(15, _document()),
+        ),
+    )
+
+    output = Source1AuthoringBackend().build(request, (model,))
+
+    assert not output.report.has_errors
+    assert tuple(lod.distance for lod in model.lods) == (15.0, 40.0)
+    model_sources = {
+        artifact.path.name: artifact.payload
+        for artifact in output.artifacts
+        if artifact.kind == Source1ArtifactKind.MODEL_SOURCE
+    }
+    assert set(model_sources) == {
+        "crate.smd",
+        "crate_collision.smd",
+        "crate_lod1.smd",
+        "crate_lod2.smd",
+    }
+    assert "  0 0 0 0 0 0 1 0 1" in model_sources["crate_collision.smd"]
+    qc = next(
+        artifact.payload
+        for artifact in output.artifacts
+        if artifact.kind == Source1ArtifactKind.MODEL_SCRIPT
+    )
+    assert (
+        '$lod 15\n'
+        '{\n'
+        '    replacemodel "crate.smd" "crate_lod1.smd"\n'
+        '}\n'
+        '$lod 40\n'
+        '{\n'
+        '    replacemodel "crate.smd" "crate_lod2.smd"\n'
+        '}\n'
+        '$collisionmodel "crate_collision.smd"\n'
+        '{\n'
+        '    $mass 12.5\n'
+        '    $concave\n'
+        '}'
+    ) in qc
+    studiomdl = next(
+        step for step in output.compile_steps
+        if step.compiler.value == "studiomdl"
+    )
+    assert tuple(
+        item.path.name for item in studiomdl.expected_outputs
+    ) == (
+        "crate.mdl",
+        "crate.vvd",
+        "crate.dx90.vtx",
+        "crate.phy",
+    )
+
+
+def test_lod_material_mismatch_is_blocked(tmp_path):
+    target = _target(tmp_path)
+    request = Source1AuthoringRequest(target, "crate")
+    model = _source1_model(
+        lods=(
+            Source1AuthoringLod(
+                20,
+                _document(material="other"),
+            ),
+        ),
+    )
+
+    output = Source1AuthoringBackend().build(request, (model,))
+
+    assert {
+        diagnostic.code for diagnostic in output.report
+    } >= {
+        "authoring.source1.lod.materials_mismatch",
+        "authoring.source1.lod.smd.invalid",
+    }
+
+
+def test_collision_and_lod_specs_reject_invalid_values():
+    document = _document()
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        Source1AuthoringCollision(document, mass=0)
+    with pytest.raises(ValueError, match="finite and positive"):
+        Source1AuthoringLod(0, document)
+    with pytest.raises(ValueError, match="unique"):
+        Source1ExtractedAuthoringModel(
+            "crate",
+            document,
+            b"",
+            (_material(),),
+            lods=(
+                Source1AuthoringLod(10, document),
+                Source1AuthoringLod(10, document),
+            ),
+        )
 
 
 def test_service_writes_manifest_report_and_artifacts(tmp_path):

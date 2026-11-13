@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 
 from ..exporting.source1 import (
     execute_source1_authoring,
@@ -23,6 +23,82 @@ from ...library.source2.authoring import (
 )
 from ...library.source2.export import ExportBlockedError
 from ...library.source2.workshop import ContentRelativePath
+
+
+_COLLECTION_PROPERTIES = (
+    "sourceio_source1_role",
+    "sourceio_source1_lod_distance",
+    "sourceio_source1_collision_mass",
+    "sourceio_source1_collision_concave",
+)
+
+
+def register_source1_collection_properties():
+    bpy.types.Collection.sourceio_source1_role = EnumProperty(
+        name="Authoring role",
+        description=(
+            "Role of this collection in Source 1 static model authoring; "
+            "tagged roles are evaluated only within the selected export scope"
+        ),
+        items=(
+            ("NONE", "Unassigned", "Use normal reference-geometry fallback rules"),
+            ("REFERENCE", "Reference", "Reference render geometry"),
+            ("COLLISION", "Collision", "Static collision geometry"),
+            ("LOD", "LOD", "Replacement geometry at a switch distance"),
+        ),
+        default="NONE",
+    )
+    bpy.types.Collection.sourceio_source1_lod_distance = FloatProperty(
+        name="Switch distance",
+        description="LOD switch distance in Source 1 Hammer units",
+        default=10.0,
+        min=0.001,
+    )
+    bpy.types.Collection.sourceio_source1_collision_mass = FloatProperty(
+        name="Mass",
+        description="Collision mass; zero lets StudioMDL calculate it",
+        default=0.0,
+        min=0.0,
+    )
+    bpy.types.Collection.sourceio_source1_collision_concave = BoolProperty(
+        name="Allow concave",
+        description="Allow StudioMDL to combine multiple convex collision pieces",
+        default=True,
+    )
+
+
+def unregister_source1_collection_properties():
+    for name in reversed(_COLLECTION_PROPERTIES):
+        if hasattr(bpy.types.Collection, name):
+            delattr(bpy.types.Collection, name)
+
+
+class SOURCEIO_PT_Source1AuthoringCollection(bpy.types.Panel):
+    bl_label = "SourceIO Source 1 Authoring"
+    bl_idname = "SOURCEIO_PT_source1_authoring_collection"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "collection"
+
+    @classmethod
+    def poll(cls, context):
+        return context.collection is not None
+
+    def draw(self, context):
+        layout = self.layout
+        collection = context.collection
+        layout.prop(collection, "sourceio_source1_role")
+        role = collection.sourceio_source1_role
+        if role == "LOD":
+            layout.prop(collection, "sourceio_source1_lod_distance")
+        elif role == "COLLISION":
+            layout.prop(collection, "sourceio_source1_collision_mass")
+            layout.prop(collection, "sourceio_source1_collision_concave")
+        if role != "NONE":
+            layout.label(
+                text="Role applies within the export operator's selected scope.",
+                icon="INFO",
+            )
 
 
 def _default_game_root() -> str:
@@ -242,6 +318,7 @@ class SOURCEIO_OT_Source1AuthoringRecompile(bpy.types.Operator):
 
 
 classes = (
+    SOURCEIO_PT_Source1AuthoringCollection,
     SOURCEIO_OT_Source1AuthoringExport,
     SOURCEIO_OT_Source1AuthoringRecompile,
 )

@@ -19,8 +19,11 @@ from .operators.source1_operators import (SOURCEIO_OT_SkyboxImport,
                                           SOURCEIO_OT_VTFExportEditable,
                                           SOURCEIO_OT_VTFImport)
 from .operators.source1_authoring_operators import (
+    SOURCEIO_PT_Source1AuthoringCollection,
     SOURCEIO_OT_Source1AuthoringExport,
     SOURCEIO_OT_Source1AuthoringRecompile,
+    register_source1_collection_properties,
+    unregister_source1_collection_properties,
 )
 from .operators.source2_operators import (SOURCEIO_OT_VMAPImport,
                                           SOURCEIO_OT_VMATImport,
@@ -197,6 +200,7 @@ classes = [
     # Source1 stuff
     SOURCEIO_OT_MDLImport,
     SOURCEIO_OT_BSPImport,
+    SOURCEIO_PT_Source1AuthoringCollection,
     SOURCEIO_OT_Source1AuthoringExport,
     SOURCEIO_OT_Source1AuthoringRecompile,
 
@@ -269,6 +273,7 @@ def register():
 
     register_custom_icon()
     register_()
+    register_source1_collection_properties()
     register_nodes()
     register_props()
     register_flex_handlers()
@@ -307,3 +312,4 @@ def unregister():
 
     unregister_custom_icon()
     unregister_()
+    unregister_source1_collection_properties()
