@@ -102,8 +102,8 @@ acceptance gate.
 - [ ] Skeletal model authoring.
 - [ ] Animation authoring.
 - [ ] Flex and morph authoring.
-- [ ] Physics and collision authoring.
-- [ ] LOD, bodygroup, skin, and attachment authoring.
+- [ ] Skeletal and jointed physics authoring.
+- [ ] Bodygroup, skin, and attachment authoring.
 
 ### Worlds
 

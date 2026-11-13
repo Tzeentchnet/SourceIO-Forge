@@ -121,7 +121,8 @@ See [VTF editing](user-guide.md#editing-vtf-textures-and-sprite-sheets).
 - Added non-destructive CS2 Workshop static-asset authoring with FBX, ModelDoc
   VMDL, VMAT, TGA, Resource Compiler integration, manifests, and recompile.
 - Added Source 1 static-asset authoring with SMD, QC, VMT, TGA, VTEX settings,
-  VTEX/StudioMDL integration, manifests, and recompile.
+  static collision and LOD collections, VTEX/StudioMDL integration, manifests,
+  and recompile.
 - Added verified CS2 base color, normal, roughness, metalness, and alpha-test
   mappings.
 - Added Source 1 imported-VMT reuse, base color/tint, alpha, normal, two-sided,

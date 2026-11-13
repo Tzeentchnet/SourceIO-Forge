@@ -146,12 +146,41 @@ blender -c sourceio recompile-source1 sourceio/manifests/my_prop.sourceio.json
 
 The workflow emits:
 
-- static reference SMD;
+- static reference SMD plus optional collision and LOD SMDs;
 - deterministic QC;
 - `VertexLitGeneric` VMT files;
 - 32-bit TGA source textures and VTEX settings;
 - deterministic manifest and preflight report;
 - bounded compile log when compilation fails.
+
+### Collision and LOD collections
+
+Source 1 static assets can use tagged Blender collections for collision
+geometry and any number of LODs. Untagged scenes retain the existing
+reference-only behavior.
+
+Select a collection and open *Collection Properties > SourceIO Source 1
+Authoring*, then assign one of these roles:
+
+- **Reference:** render geometry for the base model.
+- **Collision:** static collision geometry. Only one collision collection is
+  allowed. Mass zero asks StudioMDL to calculate the mass; **Allow concave**
+  permits multiple convex pieces.
+- **LOD:** replacement render geometry at the configured switch distance in
+  Hammer units. Each LOD needs a unique positive distance.
+
+Roles apply only to mesh objects inside the export operator's selected scope.
+When at least one collection is explicitly **Reference**, untagged objects are
+excluded from the reference model. Without an explicit reference collection,
+all scoped meshes not assigned to collision or LOD collections remain
+reference geometry.
+
+Tagged collections must not overlap or nest in a way that assigns the same
+object more than one role. Collision and LOD authoring require **One combined
+model** grouping. Every LOD must use exactly the same material identities as
+the reference model. SourceIO evaluates modifiers and transforms
+non-destructively for every role and writes deterministic
+`<model>_collision.smd` and `<model>_lodN.smd` files.
 
 ### Supported materials
 
@@ -170,6 +199,7 @@ The workflow emits:
 
 SourceIO runs `vtex.exe` and `studiomdl.exe`, sets the `VPROJECT` environment
 required by Valve's VTEX, and verifies VTF, MDL, VVD, and DX90 VTX outputs.
+Assets with collision geometry additionally require a fresh `.phy` output.
 Compiler failures leave editable files and write
 `sourceio/logs/<asset>.compile.log` below the SDK content root.
 
@@ -179,8 +209,9 @@ compilation and SourceIO re-import. The SDK 2013 gate compiles into disposable
 mod/content roots; it never writes generated files into Valve's shipped game
 directories.
 
-This is a static-prop workflow. Skeletal models, animations, physics, LODs,
-bodygroups, skins, flexes, and map authoring are outside the current slice.
+This is a static-prop workflow. Skeletal models, animations, jointed physics,
+bodygroups, skins, flexes, attachments, and map authoring are outside the
+current slice.
 
 ## Static Source 2 reconstruction
 

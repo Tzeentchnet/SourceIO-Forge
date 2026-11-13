@@ -28,7 +28,7 @@ upstream project.
   editing.
 - Extract Source 2 audio.
 - Author and optionally compile static assets for CS2 Workshop Tools and Source
-  1 toolchains.
+  1 toolchains, including Source 1 collision meshes and LODs.
 - Use the same workflows from Blender's UI, drag and drop, or the command line.
 
 ## Improvements over upstream
@@ -46,9 +46,10 @@ Compared with the upstream baseline this fork started from, it adds:
 - **More accurate materials:** corrected Source 1 phong, Fresnel, envmap, tint,
   alpha, sampler, and normal-map behavior, plus richer CS2 character, world,
   blend, decal, and unlit materials.
-- **Editable authoring workflows:** verified static-asset export, official
-  compiler integration, manifests, and recompile for CS2 Workshop Tools and
-  Source 1 toolchains, including both Source SDK Base 2013 profiles.
+- **Editable authoring workflows:** verified static-asset export, Source 1
+  collision and LOD authoring, official compiler integration, manifests, and
+  recompile for CS2 Workshop Tools and Source 1 toolchains, including both
+  Source SDK Base 2013 profiles.
 - **Blender 5.2-native packaging and testing:** split-platform extensions,
   manylinux-compatible binaries, public sample tests, installed-game gates, and
   official-tool round trips.
