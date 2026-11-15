@@ -35,6 +35,7 @@ class MaterialV36(Material):
     dp_du: float
     dp_dv: float
     unknown: tuple[int, int]
+    bpy_material: None
 
     @classmethod
     def from_buffer(cls, buffer: Buffer, version: int):
@@ -46,7 +47,7 @@ class MaterialV36(Material):
         dp_du = buffer.read_float()
         dp_dv = buffer.read_float()
         unknown = buffer.read_fmt('2I')
-        return cls(name, flags, width, height, dp_du, dp_dv, unknown)
+        return cls(name, flags, width, height, dp_du, dp_dv, unknown, None)
 
 
 @dataclass(slots=True)

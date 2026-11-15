@@ -27,9 +27,11 @@ def import_physics(phy: Phy, phy_buffer: Buffer, mdl: MdlV36, container: ModelCo
     for i, solid in enumerate(phy.solids):
         meshes: list[ConvexLeaf] = []
         vertex_count = len(_collect_meshes(solid.collision_model.root_tree, meshes))
+        if not meshes:
+            raise ValueError(f"PHY solid {i} contains no convex leaves")
 
         vertex_data = solid.collision_model.get_vertex_data(phy_buffer,
-                                                            solid.collision_model.root_tree.convex_leaf,
+                                                            meshes[0],
                                                             vertex_count)
         for j, mesh in enumerate(meshes):
             used_vertices_ids, _, new_indices = np.unique(mesh.triangles, return_index=True, return_inverse=True)

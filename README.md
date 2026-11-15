@@ -14,9 +14,11 @@ the upstream add-on. The linked Discord server is also maintained by the
 upstream project.
 
 > [!NOTE]
-> **Source 1 beta assets are supported.** This includes legacy model and
-> material layouts, beta shader aliases, and half-float `RGBA16161616F` VTF
-> textures.
+> **Validated Source 1 beta assets are supported.** This includes embedded
+> geometry and armatures, legacy model physics and materials, beta shader
+> aliases, and half-float `RGBA16161616F` VTF textures. Historical compiled
+> beta sequence records use a separate animation layout and are not yet
+> imported.
 
 ## Highlights
 

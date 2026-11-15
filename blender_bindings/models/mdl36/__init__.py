@@ -20,14 +20,17 @@ log_manager = SourceLogMan()
 logger = log_manager.get_logger('MDL loader')
 
 
+@register_model_importer(b"IDST", 32)
+@register_model_importer(b"IDST", 35)
 @register_model_importer(b"IDST", 36)
+@register_model_importer(b"IDST", 39)
 def import_mdl36(model_path: TinyPath, buffer: Buffer,
                  content_manager: ContentManager, options: ModelOptions) -> ModelContainer | None:
     mdl = MdlV36.from_buffer(buffer)
     vtx_buffer = find_vtx_cm(model_path, content_manager)
     if vtx_buffer is None:
         logger.error(f"Could not find VTX file for {model_path}")
-        raise RequiredFileNotFound(f"Could not find VVD file for {model_path}")
+        raise RequiredFileNotFound(f"Could not find VTX file for {model_path}")
     vtx = open_vtx(vtx_buffer)
     validate_model_companions(mdl, vtx, model_path=model_path)
 

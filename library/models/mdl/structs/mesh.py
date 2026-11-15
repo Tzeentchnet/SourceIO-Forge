@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from ....shared.vector_types import Vector3
 from ....utils import Buffer
 from .flex import Flex
+from .header import uses_embedded_model_data
 
 
 @dataclass(slots=True)
@@ -52,7 +53,7 @@ class MeshV36Plus(Mesh):
         material_index, model_offset, vertex_count, vertex_index_start = buffer.read_fmt('Ii2I')
         flex_count, flex_offset, material_type, material_param, mesh_id = buffer.read_fmt('5I')
         center = buffer.read_fmt('3f')
-        if version <= 36:
+        if uses_embedded_model_data(version):
             buffer.skip(4*5)
         else:
             buffer.skip(4 * 9)

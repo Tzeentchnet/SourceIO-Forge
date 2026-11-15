@@ -27,7 +27,6 @@ logger = log_manager.get_logger('MDL loader')
 
 @register_model_importer(b"IDST", 37)
 @register_model_importer(b"IDST", 38)
-@register_model_importer(b"IDST", 39)
 @register_model_importer(b"IDST", 40)
 @register_model_importer(b"IDST", 41)
 @register_model_importer(b"IDST", 42)

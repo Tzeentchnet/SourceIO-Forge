@@ -84,7 +84,7 @@ _NUMBER_TOKEN = re.compile(
 )
 _NODE_LINE = re.compile(r'(\d+)\s+"((?:[^"\\]|\\["\\])*)"\s+(-?\d+)')
 _SECTIONS = frozenset(("nodes", "skeleton", "triangles", "vertexanimation"))
-_REQUIRED_SECTIONS = frozenset(("nodes", "skeleton"))
+_REQUIRED_SECTIONS = frozenset(("nodes",))
 _WEIGHT_SUM_TOLERANCE = 1e-6
 
 
@@ -149,6 +149,7 @@ class _Reader:
     def __init__(self, text: str):
         self._lines = iter(enumerate(text.removeprefix("\ufeff").splitlines(), 1))
         self.line = 0
+        self._duplicate_node_ids: set[int] = set()
 
     def next(self) -> str | None:
         for number, raw_line in self._lines:
@@ -198,6 +199,7 @@ class _Reader:
         return x, y, z
 
     def read_nodes(self, document: SMDDocument) -> None:
+        node_indices: dict[int, int] = {}
         while (line := self.required("nodes")) != "end":
             match = _NODE_LINE.fullmatch(line)
             if match is None:
@@ -205,33 +207,73 @@ class _Reader:
             node_id, escaped_name, parent = match.groups()
             name = _unescape_name(escaped_name)
             _validate_name(name)
-            document.nodes.append(
-                SMDNode(self.integer(node_id), name, self.integer(parent))
-            )
+            node = SMDNode(self.integer(node_id), name, self.integer(parent))
+            previous_index = node_indices.get(node.id)
+            if previous_index is None:
+                node_indices[node.id] = len(document.nodes)
+                document.nodes.append(node)
+            elif document.nodes[previous_index].name == node.name:
+                self._duplicate_node_ids.add(node.id)
+                document.nodes[previous_index] = node
+            else:
+                raise ValueError(
+                    f"Conflicting SMD node {node.id} on line {self.line}"
+                )
 
     def read_skeleton(self, document: SMDDocument) -> None:
         frame: list[SMDBone] | None = None
-        while (line := self.required("skeleton")) != "end":
+        poses_by_bone: dict[int, SMDBone] | None = None
+        repeated_frame = False
+        block_has_pose = False
+        while True:
+            line = self.required("skeleton")
+            if line == "end":
+                if repeated_frame and not block_has_pose:
+                    raise ValueError(
+                        f"Empty duplicate SMD frame on line {self.line}"
+                    )
+                break
             tokens = line.split()
             if tokens[0] == "time":
                 if len(tokens) != 2:
                     raise ValueError(f"Invalid SMD time on line {self.line}")
-                time = self.integer(tokens[1])
-                if time < 0 or time in document.skeleton:
+                if repeated_frame and not block_has_pose:
                     raise ValueError(
-                        f"Invalid or duplicate SMD frame {time} on line {self.line}"
+                        f"Empty duplicate SMD frame on line {self.line}"
                     )
-                frame = document.skeleton[time] = []
+                time = self.integer(tokens[1])
+                if time < 0:
+                    raise ValueError(
+                        f"Invalid SMD frame {time} on line {self.line}"
+                    )
+                repeated_frame = time in document.skeleton
+                frame = document.skeleton.setdefault(time, [])
+                poses_by_bone = {pose.bone: pose for pose in frame}
+                block_has_pose = False
                 continue
             if frame is None or len(tokens) != 7:
                 raise ValueError(f"Invalid SMD skeleton pose on line {self.line}")
-            frame.append(
-                SMDBone(
-                    self.integer(tokens[0]),
-                    self.vector3(tokens[1:4]),
-                    self.vector3(tokens[4:7]),
-                )
+            pose = SMDBone(
+                self.integer(tokens[0]),
+                self.vector3(tokens[1:4]),
+                self.vector3(tokens[4:7]),
             )
+            block_has_pose = True
+            assert poses_by_bone is not None
+            previous = poses_by_bone.get(pose.bone)
+            if previous is not None:
+                if repeated_frame and previous == pose:
+                    continue
+                if pose.bone in self._duplicate_node_ids:
+                    frame[frame.index(previous)] = pose
+                    poses_by_bone[pose.bone] = pose
+                    continue
+                raise ValueError(
+                    f"Conflicting SMD pose for bone {pose.bone} "
+                    f"on line {self.line}"
+                )
+            poses_by_bone[pose.bone] = pose
+            frame.append(pose)
 
     def read_vertex(self, line: str) -> SMDVertex:
         tokens = line.split()
@@ -251,7 +293,9 @@ class _Reader:
                 )
                 for index in range(count)
             )
-            _validate_weight_values(weights, f"SMD line {self.line}")
+            weights = _normalize_parsed_weights(
+                weights, f"SMD line {self.line}"
+            )
         return SMDVertex(
             self.integer(tokens[0]),
             self.vector3(tokens[1:4]),
@@ -353,6 +397,25 @@ def _validate_weight_values(
         values.append(value)
     if math.fsum(values) > 1.0 + _WEIGHT_SUM_TOLERANCE:
         raise ValueError(f"{description} SMD weights exceed one")
+
+
+def _normalize_parsed_weights(
+    weights: tuple[SMDWeight, ...], description: str
+) -> tuple[SMDWeight, ...]:
+    combined: dict[int, float] = {}
+    for weight in weights:
+        _validate_integer(weight.bone, f"{description} weight bone", minimum=0)
+        value = _finite_number(weight.weight, f"{description} weight")
+        if value < 0.0:
+            raise ValueError(f"{description} has an invalid SMD weight")
+        combined[weight.bone] = combined.get(weight.bone, 0.0) + value
+
+    total = math.fsum(combined.values())
+    scale = 1.0 / total if total > 1.0 + _WEIGHT_SUM_TOLERANCE else 1.0
+    return tuple(
+        SMDWeight(bone, weight * scale)
+        for bone, weight in combined.items()
+    )
 
 
 def _validate(document: SMDDocument) -> None:
@@ -477,7 +540,9 @@ def parse(text: str) -> SMDDocument:
         else:
             reader.read_vertexanimation(document)
 
-    missing = _REQUIRED_SECTIONS - seen
+    missing = set(_REQUIRED_SECTIONS - seen)
+    if "skeleton" not in seen and "vertexanimation" not in seen:
+        missing.add("skeleton")
     if missing:
         raise ValueError(
             "SMD input is missing required section(s): "

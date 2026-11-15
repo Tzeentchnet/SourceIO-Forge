@@ -116,6 +116,19 @@ class BetaShaderAliasTests(unittest.TestCase):
                     )
                 )
 
+    def test_assignment_style_beta_materials_resolve_to_registered_handlers(self):
+        materials = {
+            '$shader = "VertexLitTexture"': 'vertexlitgeneric',
+            '$shader = "AddTexture"': 'unlitgeneric',
+            '$shader = "BaseTimesVertexColor"\n$clientShader = "MouthShader"': 'teeth',
+            '$shader = "Eyeball"': 'eyeball',
+        }
+
+        for text, expected in materials.items():
+            with self.subTest(shader=expected):
+                self.assertEqual(_vmt(text).shader, expected)
+                self.assertIn(expected, ShaderRegistry._handlers)
+
 
 class TextureIndexTests(_CleanFile):
     def _image(self, name, path, identity=""):

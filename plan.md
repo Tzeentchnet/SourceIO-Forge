@@ -17,12 +17,13 @@ Last reconciled: **2026-11-15**.
 |---|---|
 | Renamed-module smoke | 640/640 modules; register/unregister/register passed on Blender 5.2.2 and 5.3.0 |
 | Public sample imports | 87 pass, 6 known, 0 warn, 0 fail |
-| Non-Blender tests | 658 passed, 7 skipped |
+| Non-Blender tests | 678 passed, 7 skipped |
 | Blender tests excluding skins | 310 passed, 2 skipped, 22 warnings, 67 subtests on each of Blender 5.2.2 and 5.3.0 |
 | Blender skin tests | 8 passed on each of Blender 5.2.2 and 5.3.0 |
 | Source 1 authoring focus | 67 parser/backend tests plus 13 Blender adapter tests on each of Blender 5.2.2 and 5.3.0 |
 | Source 1 material/NPR focus | 44 passed, 30 subtests on each of Blender 5.2.2 and 5.3.0 |
 | Source 1 `game_write` focus | 1 passed |
+| HL2 beta archive | 13,982/13,982 SMD and 76/76 VTA files parse; three embedded-geometry MDLs and two paired PHY files import identically on Blender 5.2.2 and 5.3.0 |
 | Windows extension package | Built successfully with both versioned NPR node assets; ID `sourceio`, minimum Blender 5.2.0 |
 
 The end-to-end runners are the primary import gate:
@@ -78,6 +79,42 @@ The Windows package contains both assets while retaining extension ID
 
 These results prove the tested corpora, not complete support for every asset in
 each game.
+
+### Half-Life 2 beta archive evidence
+
+A local, uncommitted archive gate covers the applicable files under
+`F:\ModelArchive\hl2`; no proprietary assets are copied into this repository.
+The compiled-model corpus contains five MDLs: two duplicate GoldSrc v10 loader
+models plus HL2 beta versions 32, 35, and 39. The three HL2 beta models have
+embedded vertices, six VTX v6 DX7/DX80 companions, no VVD files, and two paired
+wrapperless PHY files.
+
+Synthetic tests persist the decoded layouts for MDL versions 32, 35, 36, and
+39, two- and three-bone VTX v6 records, modern and wrapperless PHY solids, and
+model-importer dispatch. The real imports produced identical results on Blender
+5.2.2 and 5.3.0:
+
+| Model | Render result | Armature | Physics result |
+|---|---|---:|---|
+| v32 plastic bucket | 108 vertices, 118 polygons, 1 material | 0 bones | 1 object, 16 vertices, 28 collision triangles |
+| v35 helper bones | 132 vertices, 220 polygons, 1 material | 5 bones | No paired PHY |
+| v39 water tower | 1,104 vertices, 828 polygons, 1 material | 0 bones | 20 objects, 186 vertices, 292 collision triangles |
+
+The editable source-art gate parses all 13,982 SMD files
+(2,238,901,254 bytes) and all 76 VTA files (304,207,388 bytes), one document at
+a time. Together they contain 280,774 nodes, 309,265 skeleton frames,
+5,194,451 triangles, and 2,632 vertex-animation frames. The parser recovers the
+observed exporter conventions for repeated indexed nodes/poses, non-normalized
+links, and vertex-animation-only VTAs while retaining errors for conflicting
+names, ordinary duplicate poses, negative or non-finite weights, and malformed
+sections. All eight assignment-style beta VMTs also resolve through supported
+shader handlers.
+
+The boundary is compiled beta animation: the v32/v35/v39 sequence tables do
+not match the later StudioMDL animation structures, so those embedded
+historical sequences are not imported. Geometry, armatures, materials, skins,
+VTX topology, and paired collision are covered without treating later layouts
+as compatible by assumption.
 
 ## Official-tool gates
 

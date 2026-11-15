@@ -6,6 +6,7 @@ import numpy.typing as npt
 from ....shared.vector_types import Vector3
 from ....utils import Buffer
 from .eyeball import Eyeball
+from .header import uses_embedded_model_data
 from .mesh import Mesh, MeshV2531, MeshV36Plus
 
 VERTEX_DTYPE = np.dtype([
@@ -135,6 +136,7 @@ class ModelV36Plus(Model):
     @classmethod
     def from_buffer(cls, buffer: Buffer, version: int):
         entry = buffer.tell()
+        embedded_model_data = uses_embedded_model_data(version)
         name = buffer.read_ascii_string(64)
         if not name:
             name = "blank"
@@ -145,14 +147,14 @@ class ModelV36Plus(Model):
         mesh_offset = buffer.read_uint32()
         vertex_count = buffer.read_uint32()
         vertex_offset = buffer.read_uint32()
-        if version > 36:
+        if not embedded_model_data:
             vertex_offset //= 48
         tangent_offset = buffer.read_uint32()
         attachment_count = buffer.read_uint32()
         attachment_offset = buffer.read_uint32()
         eyeball_count = buffer.read_uint32()
         eyeball_offset = buffer.read_uint32()
-        if version > 36:
+        if not embedded_model_data:
             vertex_data = buffer.read_fmt('2I')
         buffer.skip(8 * 4)
         with buffer.save_current_offset():
@@ -168,7 +170,7 @@ class ModelV36Plus(Model):
                 mesh = MeshV36Plus.from_buffer(buffer, version)
                 meshes.append(mesh)
 
-            if version <= 36:
+            if embedded_model_data:
                 with buffer.read_from_offset(entry + vertex_offset):
                     vertices = np.frombuffer(buffer.read(vertex_count * VERTEX_DTYPE.itemsize), dtype=VERTEX_DTYPE)
             else:

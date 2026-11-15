@@ -6,6 +6,7 @@ import numpy.typing as npt
 
 from ....shared.vector_types import Vector4
 from ....utils import Buffer
+from .header import uses_embedded_model_data
 
 
 class FlexOpType(IntEnum):
@@ -185,7 +186,7 @@ class Flex:
             partner_index = None
             vertex_anim_type = VertexAminationType.NORMAL
             vert_anim_class = VertAnimV2531
-        elif version > 36:
+        elif not uses_embedded_model_data(version):
             partner_index = buffer.read_int32()
             vertex_anim_type = VertexAminationType(buffer.read_uint8())
             if vertex_anim_type == VertexAminationType.WRINKLE:

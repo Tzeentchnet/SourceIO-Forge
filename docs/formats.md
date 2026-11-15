@@ -8,7 +8,7 @@ resource variation is understood.
 
 | Extension | Contents | SourceIO operation | Notes |
 |---|---|---|---|
-| `.mdl` | GoldSrc or Source model | Import | Version is detected from the file. |
+| `.mdl` | GoldSrc or Source model | Import | Version is detected from the file, including embedded-vertex HL2 beta versions 32, 35, 36, and 39. |
 | `.md3` | Quake III model | Import | Uses the model importer. |
 | `.bsp` | Compiled GoldSrc or Source map | Import | GoldSrc and Source maps use separate importers. |
 | `.vtf` | Source texture | Import and direct export | Import preserves sprite sheets and metadata. External-edit export writes image data, `.sht`, `.mks`, and JSON. |
@@ -47,7 +47,15 @@ targets. The authoring and reconstruction workflows are described in
 - Source 1 VTF import supports half-float `RGBA16161616F` HDR textures,
   including legacy cubemap layouts.
 - Source 1 model import resolves mesh material slots through skin families and
-  recognizes legacy `SDK_*`, sprite, and eyeball shader aliases.
+  recognizes legacy `SDK_*`, sprite, and eyeball shader aliases. HL2 beta MDL
+  versions 32, 35, 36, and 39 use their embedded geometry with VTX v6
+  companions rather than requiring a VVD.
+- Shaderless-block beta VMTs using `$key = value` assignments are normalized
+  through their declared `$shader`, including `VertexLitTexture`, `AddTexture`,
+  `BaseTimesVertexColor`/`MouthShader`, and `Eyeball`.
+- Version-1 SMD/VTA parsing recovers observed legacy exporter output with
+  repeated same-name nodes, repeated agreeing pose blocks, non-normalized
+  vertex links, and vertex-animation-only VTAs without a skeleton section.
 - Source 1 `gameinfo.txt` loading mounts exact `game_write` entries
   case-insensitively and preserves declared search-path precedence.
 - Source 1 `VertexLitGeneric` uses the Principled path by default. The opt-in
@@ -57,7 +65,9 @@ targets. The authoring and reconstruction workflows are described in
 - VCS metadata is used for packed-channel interpretation only when its meaning
   is unambiguous.
 - Source 1 model animation support covers common MDL versions and include
-  models.
+  models. Historical compiled sequence records in HL2 beta MDL versions
+  32, 35, and 39 are not currently decoded; their geometry, armatures,
+  materials, and paired physics remain importable.
 - Source 2 animation support includes embedded animations, animation groups,
   older NTRO resources, additive motion, root motion, morph/user/data channels,
   and animation-graph clips.

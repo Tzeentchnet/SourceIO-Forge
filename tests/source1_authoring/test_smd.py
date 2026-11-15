@@ -152,6 +152,85 @@ def test_parse_vta_vertexanimation():
     }
 
 
+def test_parse_vta_without_skeleton():
+    document = parse(
+        "version 1\n"
+        "nodes\n"
+        '0 "root" -1\n'
+        "end\n"
+        "vertexanimation\n"
+        "time 0\n"
+        "0 0 0 0 0 0 1\n"
+        "end\n"
+    )
+
+    assert document.skeleton == {}
+    assert len(document.vertex_animation[0]) == 1
+
+
+def test_parse_merges_legacy_duplicate_nodes_and_frames():
+    document = parse(
+        "version 1\n"
+        "nodes\n"
+        '0 "root" -1\n'
+        '1 "child" 0\n'
+        '1 "child" -1\n'
+        "end\n"
+        "skeleton\n"
+        "time 0\n"
+        "0 0 0 0 0 0 0\n"
+        "1 0 0 0 0 0 0\n"
+        "time 0\n"
+        "1 0 0 0 0 0 0\n"
+        "end\n"
+    )
+
+    assert document.nodes[1] == SMDNode(1, "child", -1)
+    assert [pose.bone for pose in document.skeleton[0]] == [0, 1]
+
+
+def test_parse_uses_last_pose_for_legacy_duplicate_node():
+    document = parse(
+        "version 1\n"
+        "nodes\n"
+        '0 "root" -1\n'
+        '1 "child" 0\n'
+        '1 "child" 0\n'
+        "end\n"
+        "skeleton\n"
+        "time 0\n"
+        "0 0 0 0 0 0 0\n"
+        "1 0 0 0 0 0 0\n"
+        "1 2 0 0 0 0 0\n"
+        "end\n"
+    )
+
+    assert document.skeleton[0][1].position == (2.0, 0.0, 0.0)
+
+
+@pytest.mark.parametrize(
+    ("vertex", "expected"),
+    [
+        ("0 0 0 0 0 0 1 0 0 1 0 1.1", ((0, 1.0),)),
+        (
+            "0 0 0 0 0 0 1 0 0 2 0 0.6 1 0.5",
+            ((0, 0.6 / 1.1), (1, 0.5 / 1.1)),
+        ),
+        ("0 0 0 0 0 0 1 0 0 2 0 0.5 0 0.5", ((0, 1.0),)),
+    ],
+)
+def test_parse_normalizes_legacy_weights(vertex: str, expected):
+    weights = parse(_triangle_smd(vertex)).triangles[0].vertices[0].weights
+
+    assert weights is not None
+    assert tuple(weight.bone for weight in weights) == tuple(
+        bone for bone, _ in expected
+    )
+    assert tuple(weight.weight for weight in weights) == pytest.approx(
+        tuple(value for _, value in expected)
+    )
+
+
 def test_comments_and_escaped_node_names_round_trip():
     text = r"""
 // leading comment
@@ -243,6 +322,15 @@ def test_dump_stream_and_load_path_or_caller_owned_stream(tmp_path: Path):
         (
             "version 1\nnodes\n"
             '0 "root" -1\nend\n'
+            "skeleton\ntime 0\n"
+            "0 0 0 0 0 0 0\n"
+            "time 0\n"
+            "0 1 0 0 0 0 0\n"
+            "end\n"
+        ),
+        (
+            "version 1\nnodes\n"
+            '0 "root" -1\nend\n'
             "skeleton\ntime 0\n0 nan 0 0 0 0 0\nend\n"
         ),
         _triangle_smd("0 0 0 0 0 0 1 0 0 trailing"),
@@ -273,6 +361,7 @@ def test_dump_stream_and_load_path_or_caller_owned_stream(tmp_path: Path):
         "pose-before-time",
         "pose-trailing-token",
         "duplicate-frame",
+        "conflicting-duplicate-frame",
         "non-finite",
         "vertex-trailing-token",
         "weight-count",
@@ -350,17 +439,11 @@ def test_parse_rejects_invalid_references_and_duplicates(text: str):
     [
         "0 0 0 0 0 0 1 0 0 -1",
         "0 0 0 0 0 0 1 0 0 1 0 -0.1",
-        "0 0 0 0 0 0 1 0 0 1 0 1.1",
-        "0 0 0 0 0 0 1 0 0 2 0 0.6 1 0.5",
-        "0 0 0 0 0 0 1 0 0 2 0 0.5 0 0.5",
         "0 0 0 0 0 0 1 0 0 1 0 inf",
     ],
     ids=[
         "negative-count",
         "negative",
-        "greater-than-one",
-        "sum-greater-than-one",
-        "duplicate-bone",
         "non-finite",
     ],
 )

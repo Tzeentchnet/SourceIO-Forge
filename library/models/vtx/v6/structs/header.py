@@ -28,6 +28,9 @@ class Header:
         material_replacement_list_offset = buffer.read_uint32()
         body_part_count = buffer.read_uint32()
         body_part_offset = buffer.read_uint32()
-        assert 3 == max_bones_per_vertex, 'Unsupported count of bones per vertex'
+        if max_bones_per_vertex not in (2, 3):
+            raise ValueError(
+                f"Unsupported count of bones per vertex: {max_bones_per_vertex}"
+            )
         return cls(version, vertex_cache_size, max_bones_per_strip, max_bones_per_tri, max_bones_per_vertex, checksum,
                    lod_count, material_replacement_list_offset, body_part_count, body_part_offset)

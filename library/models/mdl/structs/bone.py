@@ -241,12 +241,12 @@ class Bone:
         procedural_rule_offset = buffer.read_uint32()
         physics_bone_index = buffer.read_uint32()
         surface_prop = buffer.read_source1_string(start_offset)
-        if version == 36:
+        if version in (32, 35, 36):
             quat = buffer.read_fmt('4f')
         contents = Contents(buffer.read_uint32())
-        if version == 36:
+        if version in (32, 35, 36):
             buffer.skip(3 * 4)
-        if version >= 44 and version != 2531:
+        if (version == 39 or version >= 44) and version != 2531:
             _ = [buffer.read_uint32() for _ in range(8)]
         if version >= 53 and version != 2531:
             buffer.skip(4 * 7)

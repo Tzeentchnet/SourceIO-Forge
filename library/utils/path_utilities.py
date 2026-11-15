@@ -28,6 +28,9 @@ def find_vtx(mdl_path: TinyPath):
             path = corrected_path(mdl_path.with_suffix(f'.dx{vtx_version}.vtx'))
         if path is not None and path.exists():
             return path
+    path = corrected_path(mdl_path.with_suffix('.dx7_2bone.vtx'))
+    if path is not None and path.exists():
+        return path
 
 
 def find_vtx_cm(mdl_path: TinyPath, content_manager):
@@ -39,6 +42,7 @@ def find_vtx_cm(mdl_path: TinyPath, content_manager):
             path = content_manager.find_file(mdl_path.with_suffix(f'.dx{vtx_version}.vtx'))
         if path:
             return path
+    return content_manager.find_file(mdl_path.with_suffix('.dx7_2bone.vtx'))
     return None
 
 

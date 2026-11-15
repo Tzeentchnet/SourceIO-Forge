@@ -133,12 +133,13 @@ class CollisionModel:
     root_tree: TreeNode
 
     @classmethod
-    def from_buffer(cls, buffer: Buffer):
+    def from_buffer(cls, buffer: Buffer, allow_legacy_marker: bool = False):
         entry_offset = buffer.tell()
         values = buffer.read_fmt('7f')
         surface, offset_tree, *_ = buffer.read_fmt('4I')
         ivps_magic = buffer.read_fourcc()
-        assert ivps_magic == 'IVPS'
+        if ivps_magic != 'IVPS' and not (allow_legacy_marker and not ivps_magic):
+            raise ValueError(f"Invalid IVPS marker: {ivps_magic!r}")
         with buffer.save_current_offset():
             buffer.seek(entry_offset + offset_tree)
             root_tree = TreeNode.from_buffer(buffer)
@@ -173,7 +174,10 @@ class SolidHeader:
     def from_buffer(cls, buffer: Buffer):
         solid_size = buffer.read_uint32()
         ident = buffer.read_fourcc()
-        assert ident == 'VPHY'
+        if ident != 'VPHY':
+            buffer.seek(buffer.tell() - 4)
+            collision_model = CollisionModel.from_buffer(buffer, allow_legacy_marker=True)
+            return cls(solid_size, 0, 0, solid_size, (0.0, 0.0, 0.0), 0, collision_model)
         version = buffer.read_uint16()
         type = buffer.read_uint16()
         size = buffer.read_uint32()

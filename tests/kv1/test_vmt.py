@@ -26,6 +26,49 @@ def test_unparseable_material_reports_failed_to_load():
     assert make('').shader == 'FAILED_TO_LOAD'
 
 
+def test_beta_assignment_material_maps_vertex_lit_texture():
+    vmt = make(
+        '$baseTexture = "models/character/face"\n'
+        '$shader = "VertexLitTexture"\n'
+    )
+
+    assert vmt.shader == 'vertexlitgeneric'
+    assert vmt.get_string('$basetexture') == 'models/character/face'
+
+
+def test_beta_assignment_material_maps_add_texture():
+    vmt = make(
+        '$baseTexture = "models/effects/glint"\n'
+        '$shader = "AddTexture"\n'
+        '$model = 1\n'
+    )
+
+    assert vmt.shader == 'unlitgeneric'
+    assert vmt.get_string('$additive') == '1'
+    assert vmt.get_string('$model') == '1'
+
+
+def test_beta_assignment_material_maps_mouth_shader():
+    vmt = make(
+        '$baseTexture = "models/character/teeth"\n'
+        '$shader = "BaseTimesVertexColor"\n'
+        '$clientShader = "MouthShader"\n'
+    )
+
+    assert vmt.shader == 'teeth'
+    assert vmt.get_string('$vertexcolor') == '1'
+    assert vmt.get_string('$clientshader') == 'MouthShader'
+
+
+def test_beta_assignment_material_keeps_eyeball_alias():
+    vmt = make(
+        '$baseTexture = "models/character/pupil"\n'
+        '$shader = "Eyeball"\n'
+    )
+
+    assert vmt.shader == 'eyeball'
+
+
 # ------------------------------------------------------- condition-named blocks
 
 def test_dx90_block_is_promoted_and_overrides():

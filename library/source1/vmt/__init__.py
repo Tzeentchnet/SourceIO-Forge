@@ -13,16 +13,64 @@ logger = log_manager.get_logger('Source1::VMT')
 #: that decides which content branch a material takes.
 CONDITIONS = kv1.ConditionContext()
 
+_LEGACY_ASSIGNMENT = re.compile(
+    r'^\s*(\$[A-Za-z][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$'
+)
+
+
+def _parse_legacy_assignment_material(text: str):
+    assignments: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('//'):
+            continue
+        match = _LEGACY_ASSIGNMENT.fullmatch(line)
+        if match is None:
+            return None
+        key, value = match.groups()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = value[1:-1]
+        assignments.append((key.lower(), value))
+
+    values = dict(assignments)
+    shader = values.get('$shader')
+    if shader is None:
+        return None
+
+    data = kv1.KV1Block()
+    for key, value in assignments:
+        if key != '$shader':
+            data.append(key, value)
+
+    shader_name = shader.lower()
+    if shader_name == 'vertexlittexture':
+        shader_name = 'vertexlitgeneric'
+    elif shader_name == 'addtexture':
+        shader_name = 'unlitgeneric'
+        data['$additive'] = '1'
+    elif shader_name == 'basetimesvertexcolor':
+        data['$vertexcolor'] = '1'
+        shader_name = (
+            'teeth'
+            if values.get('$clientshader', '').lower() == 'mouthshader'
+            else 'vertexlitgeneric'
+        )
+    return shader_name, data
+
 
 class VMT:
     def __init__(self, buffer: Buffer, filename: str, content_manager: ContentManager):
         self._usage_report = set()
         data = buffer.read()
         text = kv1.decode_text(data, str(filename)) if isinstance(data, bytes) else data
-        # The parser recovers from damage rather than raising, so there is no parse
-        # failure to catch -- an unreadable material yields an empty tree instead.
-        root = kv1.loads(text, str(filename))
-        self.shader, self.data = root.top()
+        legacy_material = _parse_legacy_assignment_material(text)
+        if legacy_material is None:
+            # The parser recovers from damage rather than raising, so there is no parse
+            # failure to catch -- an unreadable material yields an empty tree instead.
+            root = kv1.loads(text, str(filename))
+            self.shader, self.data = root.top()
+        else:
+            self.shader, self.data = legacy_material
         if not isinstance(self.data, kv1.KV1Block):
             logger.warn(f'{filename}: shader {self.shader!r} has a value where a block '
                         f'was expected')
