@@ -4,7 +4,13 @@ import os
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from bpy.props import (
+    BoolProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    StringProperty,
+)
 
 from ..exporting.source1 import (
     execute_source1_authoring,
@@ -30,6 +36,15 @@ _COLLECTION_PROPERTIES = (
     "sourceio_source1_lod_distance",
     "sourceio_source1_collision_mass",
     "sourceio_source1_collision_concave",
+    "sourceio_source1_bodygroup_name",
+    "sourceio_source1_bodygroup_choice",
+    "sourceio_source1_bodygroup_blank",
+)
+_OBJECT_PROPERTIES = (
+    "sourceio_source1_attachment",
+    "sourceio_source1_hitbox",
+    "sourceio_source1_hitbox_group",
+    "sourceio_source1_bone",
 )
 
 
@@ -37,7 +52,7 @@ def register_source1_collection_properties():
     bpy.types.Collection.sourceio_source1_role = EnumProperty(
         name="Authoring role",
         description=(
-            "Role of this collection in Source 1 static model authoring; "
+            "Role of this collection in Source 1 model authoring; "
             "tagged roles are evaluated only within the selected export scope"
         ),
         items=(
@@ -45,6 +60,11 @@ def register_source1_collection_properties():
             ("REFERENCE", "Reference", "Reference render geometry"),
             ("COLLISION", "Collision", "Static collision geometry"),
             ("LOD", "LOD", "Replacement geometry at a switch distance"),
+            (
+                "BODYGROUP",
+                "Bodygroup choice",
+                "Optional bodygroup geometry or an explicit blank choice",
+            ),
         ),
         default="NONE",
     )
@@ -65,9 +85,48 @@ def register_source1_collection_properties():
         description="Allow StudioMDL to combine multiple convex collision pieces",
         default=True,
     )
+    bpy.types.Collection.sourceio_source1_bodygroup_name = StringProperty(
+        name="Bodygroup",
+        description="QC bodygroup name shared by all of its choices",
+    )
+    bpy.types.Collection.sourceio_source1_bodygroup_choice = StringProperty(
+        name="Choice",
+        description=(
+            "Lowercase path-safe choice name used for the authored SMD"
+        ),
+    )
+    bpy.types.Collection.sourceio_source1_bodygroup_blank = BoolProperty(
+        name="Blank choice",
+        description="Emit an explicit blank entry instead of geometry",
+        default=False,
+    )
+    bpy.types.Object.sourceio_source1_attachment = BoolProperty(
+        name="Attachment",
+        description="Export this object transform as a Source 1 attachment",
+        default=False,
+    )
+    bpy.types.Object.sourceio_source1_hitbox = BoolProperty(
+        name="Hitbox",
+        description="Export this object's bounds as a Source 1 hitbox",
+        default=False,
+    )
+    bpy.types.Object.sourceio_source1_hitbox_group = IntProperty(
+        name="Hitbox group",
+        min=0,
+        default=0,
+    )
+    bpy.types.Object.sourceio_source1_bone = StringProperty(
+        name="Bone",
+        description=(
+            "Target bone when the object is not parented directly to a bone"
+        ),
+    )
 
 
 def unregister_source1_collection_properties():
+    for name in reversed(_OBJECT_PROPERTIES):
+        if hasattr(bpy.types.Object, name):
+            delattr(bpy.types.Object, name)
     for name in reversed(_COLLECTION_PROPERTIES):
         if hasattr(bpy.types.Collection, name):
             delattr(bpy.types.Collection, name)
@@ -94,10 +153,41 @@ class SOURCEIO_PT_Source1AuthoringCollection(bpy.types.Panel):
         elif role == "COLLISION":
             layout.prop(collection, "sourceio_source1_collision_mass")
             layout.prop(collection, "sourceio_source1_collision_concave")
+        elif role == "BODYGROUP":
+            layout.prop(collection, "sourceio_source1_bodygroup_name")
+            layout.prop(collection, "sourceio_source1_bodygroup_choice")
+            layout.prop(collection, "sourceio_source1_bodygroup_blank")
         if role != "NONE":
             layout.label(
                 text="Role applies within the export operator's selected scope.",
                 icon="INFO",
+            )
+
+
+class SOURCEIO_PT_Source1AuthoringObject(bpy.types.Panel):
+    bl_label = "SourceIO Source 1 Authoring"
+    bl_idname = "SOURCEIO_PT_source1_authoring_object"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "object"
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.object
+        layout.prop(obj, "sourceio_source1_attachment")
+        layout.prop(obj, "sourceio_source1_hitbox")
+        if obj.sourceio_source1_attachment or obj.sourceio_source1_hitbox:
+            layout.prop(obj, "sourceio_source1_bone")
+        if obj.sourceio_source1_hitbox:
+            layout.prop(obj, "sourceio_source1_hitbox_group")
+        if obj.sourceio_source1_attachment and obj.sourceio_source1_hitbox:
+            layout.label(
+                text="Choose either attachment or hitbox, not both.",
+                icon="ERROR",
             )
 
 
@@ -131,6 +221,7 @@ def _request(operator) -> Source1AuthoringRequest:
         grouping=operator.grouping,
         overwrite=operator.overwrite,
         compile_after_export=operator.compile_after_export,
+        export_skeleton=operator.export_skeleton,
     )
 
 
@@ -144,10 +235,10 @@ def _report_failure(operator, exc: Exception):
 
 
 class SOURCEIO_OT_Source1AuthoringExport(bpy.types.Operator):
-    """Author editable static Source 1 files and optionally compile them."""
+    """Author editable Source 1 files and optionally compile them."""
 
     bl_idname = "sourceio.source1_authoring_export"
-    bl_label = "Source 1 static asset"
+    bl_label = "Source 1 asset"
     bl_options = {"REGISTER"}
 
     game_root: StringProperty(
@@ -204,6 +295,13 @@ class SOURCEIO_OT_Source1AuthoringExport(bpy.types.Operator):
         description="Run VTEX and StudioMDL after editable files are written",
         default=False,
     )
+    export_skeleton: BoolProperty(
+        name="Skeletal reference",
+        description=(
+            "Export the selected meshes' armature, rest pose, and skin weights"
+        ),
+        default=False,
+    )
 
     @classmethod
     def poll(cls, context):
@@ -223,6 +321,7 @@ class SOURCEIO_OT_Source1AuthoringExport(bpy.types.Operator):
         layout.prop(self, "surface_property")
         layout.prop(self, "scope")
         layout.prop(self, "grouping")
+        layout.prop(self, "export_skeleton")
         layout.prop(self, "overwrite")
         layout.prop(self, "compile_after_export")
 

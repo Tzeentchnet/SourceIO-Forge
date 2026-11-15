@@ -18,6 +18,7 @@ from SourceIO.library.source1.authoring import (
     Source1AuthoringTarget,
     Source1ExtractedAuthoringModel,
 )
+from SourceIO.library.models.smd import parse as parse_smd
 from SourceIO.library.source2.authoring import (
     AuthoringGrouping,
     AuthoringScope,
@@ -72,6 +73,24 @@ class Source1AuthoringAdapterTests(unittest.TestCase):
         material.use_nodes = True
         return material
 
+    @staticmethod
+    def armature_object(name="crate_rig"):
+        data = bpy.data.armatures.new(name)
+        armature = bpy.data.objects.new(name, data)
+        bpy.context.scene.collection.objects.link(armature)
+        bpy.context.view_layer.objects.active = armature
+        armature.select_set(True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        root = data.edit_bones.new("root")
+        root.head = (0.0, 0.0, 0.0)
+        root.tail = (0.0, 0.0, 1.0)
+        child = data.edit_bones.new("child")
+        child.head = (0.0, 0.0, 1.0)
+        child.tail = (0.0, 0.0, 2.0)
+        child.parent = root
+        bpy.ops.object.mode_set(mode="OBJECT")
+        return armature
+
     def request(self, **kwargs):
         return Source1AuthoringRequest(self.target, "crate", **kwargs)
 
@@ -103,7 +122,13 @@ class Source1AuthoringAdapterTests(unittest.TestCase):
             self.request(),
         )
 
-        self.assertFalse(report.has_errors)
+        self.assertFalse(
+            report.has_errors,
+            [
+                (diagnostic.code, diagnostic.message, diagnostic.details)
+                for diagnostic in report
+            ],
+        )
         self.assertEqual(len(models), 1)
         self.assertEqual(models[0].fbx_payload, b"")
         self.assertGreater(
@@ -182,6 +207,48 @@ class Source1AuthoringAdapterTests(unittest.TestCase):
         self.assertIn('"$phong" "1"', vmt)
         self.assertIn('"$phongexponent" "16"', vmt)
         self.assertEqual(len(result.execution.compiler_results), 0)
+
+    def test_scalar_pbr_conversion_and_typed_vmt_fields_are_opt_in(self):
+        obj = self.mesh_object()
+        material = self.principled_material()
+        material["sourceio_source1_pbr_to_phong"] = True
+        material["sourceio_source1_selfillum"] = True
+        material["sourceio_source1_selfillum_tint"] = (0.25, 0.5, 0.75)
+        material["sourceio_source1_envmap"] = "env_cubemap"
+        material["sourceio_source1_envmap_tint"] = (0.5, 0.5, 0.5)
+        principled = material.node_tree.nodes["Principled BSDF"]
+        principled.inputs["Roughness"].default_value = 0.5
+        principled.inputs["Metallic"].default_value = 0.5
+        obj.data.materials.append(material)
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(),
+        )
+
+        self.assertFalse(report.has_errors)
+        authored = models[0].materials[0]
+        self.assertTrue(authored.pbr_converted)
+        self.assertAlmostEqual(authored.phong.exponent, 30.0)
+        self.assertAlmostEqual(authored.phong.boost, 0.625)
+        self.assertTrue(authored.phong.albedo_tint)
+
+        execute_source1_authoring(
+            bpy.context,
+            self.request(),
+        )
+        vmt = self.target.game_path(
+            "materials/models/sourceio/crate/crate_material.vmt"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"$phongexponent" "30"', vmt)
+        self.assertIn('"$phongboost" "0.625"', vmt)
+        self.assertIn('"$phongalbedotint" "1"', vmt)
+        self.assertIn('"$selfillum" "1"', vmt)
+        self.assertIn('"$selfillumtint" "[0.25 0.5 0.75]"', vmt)
+        self.assertIn('"$envmap" "env_cubemap"', vmt)
+        self.assertIn('"$envmaptint" "[0.5 0.5 0.5]"', vmt)
 
     def test_tagged_collections_extract_collision_and_lod(self):
         reference_collection = bpy.data.collections.new("Reference")
@@ -369,6 +436,160 @@ class Source1AuthoringAdapterTests(unittest.TestCase):
                 for artifact in result.plan.artifacts
             ),
             0,
+        )
+
+    def test_bodygroups_skins_attachments_and_hitboxes_are_extracted(self):
+        reference_collection = bpy.data.collections.new("Reference")
+        bodygroup_collection = bpy.data.collections.new("Accessory")
+        blank_collection = bpy.data.collections.new("Accessory blank")
+        for collection in (
+                reference_collection,
+                bodygroup_collection,
+                blank_collection,
+        ):
+            bpy.context.scene.collection.children.link(collection)
+        reference_collection["sourceio_source1_role"] = "REFERENCE"
+        for collection, choice, blank in (
+                (bodygroup_collection, "crate", False),
+                (blank_collection, "blank", True),
+        ):
+            collection["sourceio_source1_role"] = "BODYGROUP"
+            collection["sourceio_source1_bodygroup_name"] = "accessory"
+            collection["sourceio_source1_bodygroup_choice"] = choice
+            collection["sourceio_source1_bodygroup_blank"] = blank
+
+        material = self.principled_material()
+        material["sourceio_source1_skins"] = {"blue": "crate_blue"}
+        reference = self.mesh_object("reference", reference_collection)
+        choice = self.mesh_object("choice", bodygroup_collection)
+        for obj in (reference, choice):
+            obj.data.materials.append(material)
+
+        attachment = bpy.data.objects.new("muzzle", None)
+        attachment["sourceio_source1_attachment"] = True
+        attachment.location = (1.0, 0.0, 0.0)
+        bpy.context.scene.collection.objects.link(attachment)
+        hitbox = bpy.data.objects.new("hitbox", None)
+        hitbox.empty_display_type = "CUBE"
+        hitbox.empty_display_size = 0.5
+        hitbox["sourceio_source1_hitbox"] = True
+        hitbox["sourceio_source1_hitbox_group"] = 2
+        bpy.context.scene.collection.objects.link(hitbox)
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(scope=AuthoringScope.SCENE),
+        )
+
+        self.assertFalse(
+            report.has_errors,
+            [
+                (diagnostic.code, diagnostic.message, diagnostic.details)
+                for diagnostic in report
+            ],
+        )
+        model = models[0]
+        self.assertEqual(model.bodygroups[0].name, "accessory")
+        self.assertEqual(
+            tuple(choice.name for choice in model.bodygroups[0].choices),
+            ("blank", "crate"),
+        )
+        self.assertIsNone(model.bodygroups[0].choices[0].document)
+        self.assertEqual(
+            tuple(family.materials for family in model.skin_families),
+            (("crate_material",), ("crate_blue",)),
+        )
+        self.assertEqual(model.attachments[0].name, "muzzle")
+        self.assertEqual(model.attachments[0].bone, "root")
+        self.assertEqual(model.hitboxes[0].group, 2)
+        self.assertEqual(model.hitboxes[0].bone, "root")
+
+        result = execute_source1_authoring(
+            bpy.context,
+            self.request(scope=AuthoringScope.SCENE),
+        )
+        qc = self.target.content_path(
+            "modelsrc/sourceio/crate/crate.qc"
+        ).read_text(encoding="utf-8")
+        self.assertIn('$bodygroup "accessory"', qc)
+        self.assertIn('$texturegroup "skinfamilies"', qc)
+        self.assertIn('$attachment "muzzle" "root"', qc)
+        self.assertIn('$hbox 2 "root"', qc)
+        self.assertEqual(len(result.execution.compiler_results), 0)
+
+    def test_skeletal_reference_uses_rest_pose_and_vertex_weights(self):
+        armature = self.armature_object()
+        mesh = self.mesh_object()
+        mesh.data.materials.append(self.principled_material())
+        root = mesh.vertex_groups.new(name="root")
+        child = mesh.vertex_groups.new(name="child")
+        root.add((0,), 1.0, "REPLACE")
+        child.add((1, 2), 1.0, "REPLACE")
+        modifier = mesh.modifiers.new("Armature", "ARMATURE")
+        modifier.object = armature
+        armature.data.pose_position = "POSE"
+        armature.pose.bones["child"].rotation_mode = "XYZ"
+        armature.pose.bones["child"].rotation_euler.z = 0.5
+        armature.select_set(False)
+        mesh.select_set(True)
+        bpy.context.view_layer.objects.active = mesh
+        bpy.context.view_layer.update()
+
+        models, report = extract_source1_authoring_models(
+            bpy.context,
+            self.request(export_skeleton=True),
+        )
+
+        self.assertFalse(report.has_errors)
+        self.assertEqual(armature.data.pose_position, "POSE")
+        model = models[0]
+        self.assertEqual(
+            tuple(bone.name for bone in model.skeleton.bones),
+            ("root", "child"),
+        )
+        weights = {
+            vertex.corner.bone_indices
+            for vertex in model.document.meshes[0].vertices
+        }
+        self.assertEqual(weights, {(0,), (1,)})
+
+        result = execute_source1_authoring(
+            bpy.context,
+            self.request(export_skeleton=True),
+        )
+        source = self.target.content_path(
+            "modelsrc/sourceio/crate/crate.smd"
+        ).read_text(encoding="utf-8")
+        parsed = parse_smd(source)
+        self.assertEqual(
+            tuple(node.name for node in parsed.nodes),
+            ("root", "child"),
+        )
+        qc = self.target.content_path(
+            "modelsrc/sourceio/crate/crate.qc"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("$staticprop", qc)
+        self.assertEqual(armature.data.pose_position, "POSE")
+        self.assertEqual(len(result.execution.compiler_results), 0)
+
+        cli_result = cli.execute([
+            "export-source1",
+            "--game-root",
+            str(self.target.game_root),
+            "--content-root",
+            str(self.target.content_root),
+            "--asset",
+            "crate",
+            "--skeletal",
+            "--overwrite",
+        ])
+        self.assertEqual(cli_result, 0)
+        cli_source = self.target.content_path(
+            "modelsrc/sourceio/crate/crate.smd"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(
+            tuple(node.name for node in parse_smd(cli_source).nodes),
+            ("root", "child"),
         )
 
     def test_operator_cli_and_service_write_identical_outputs(self):

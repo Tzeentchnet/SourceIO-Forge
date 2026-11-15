@@ -8,18 +8,22 @@ from pathlib import Path
 from SourceIO.library.models.mdl.v49.mdl_file import MdlV49
 from SourceIO.library.source1.authoring import (
     Source1ArtifactRoot,
+    Source1Attachment,
     Source1AuthoringBackend,
     Source1AuthoringCollision,
+    Source1AuthoringMaterial,
     Source1AuthoringLod,
     Source1AuthoringPlan,
     Source1AuthoringRequest,
     Source1AuthoringService,
     Source1AuthoringTarget,
     Source1ExtractedAuthoringModel,
+    Source1MaterialParameters,
+    Source1SkinFamily,
+    source1_pbr_to_phong,
 )
 from SourceIO.library.source1.vtf import load_texture
 from SourceIO.library.source2.authoring import (
-    AuthoringMaterial,
     AuthoringTexture,
     MaterialAlphaMode,
     TextureRole,
@@ -397,8 +401,10 @@ def _fixture_model(asset_name: str) -> Source1ExtractedAuthoringModel:
             ),
         ),
     )
-    material = AuthoringMaterial(
+    material = Source1AuthoringMaterial(
         "probe",
+        metallic=0.5,
+        roughness=0.5,
         alpha_mode=MaterialAlphaMode.MASK,
         alpha_cutoff=0.4,
         textures=(
@@ -422,14 +428,31 @@ def _fixture_model(asset_name: str) -> Source1ExtractedAuthoringModel:
                 extension=".tga",
             ),
         ),
+        phong=source1_pbr_to_phong(0.5, 0.5),
+        parameters=Source1MaterialParameters(
+            self_illum=True,
+            self_illum_tint=(0.8, 0.2, 0.1),
+            envmap="env_cubemap",
+        ),
+        pbr_converted=True,
     )
     return Source1ExtractedAuthoringModel(
         asset_name,
         document,
         b"",
         (material,),
-        Source1AuthoringCollision(collision_document, mass=10.0),
-        (Source1AuthoringLod(64.0, lod_document),),
+        collision=Source1AuthoringCollision(
+            collision_document,
+            mass=10.0,
+        ),
+        lods=(Source1AuthoringLod(64.0, lod_document),),
+        skin_families=(
+            Source1SkinFamily(("probe",)),
+            Source1SkinFamily(("probe_blue",)),
+        ),
+        attachments=(
+            Source1Attachment("origin", "root", (0, 0, 0)),
+        ),
     )
 
 

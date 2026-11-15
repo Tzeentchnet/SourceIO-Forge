@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable
@@ -14,6 +15,26 @@ from ...source2.authoring.models import (
 from ...source2.export import LossReport, ModelDocument
 from ...source2.workshop import ContentRelativePath
 from .target import Source1AuthoringTarget
+
+
+_SAFE_NAME = re.compile(r"^[a-z0-9_]+$")
+
+
+def _text(value: str, label: str) -> str:
+    if not isinstance(value, str) or not value or any(
+            ord(character) < 32 for character in value
+    ):
+        raise ValueError(f"{label} must be non-empty text without control characters")
+    return value
+
+
+def _vector3(value, label: str) -> tuple[float, float, float]:
+    normalized = tuple(float(component) for component in value)
+    if len(normalized) != 3 or any(
+            not math.isfinite(component) for component in normalized
+    ):
+        raise ValueError(f"{label} must contain three finite values")
+    return normalized
 
 
 class Source1ArtifactRoot(str, Enum):
@@ -70,9 +91,164 @@ class Source1AuthoringLod:
 
 
 @dataclass(frozen=True, slots=True)
+class Source1BodygroupChoice:
+    name: str
+    document: ModelDocument | None
+
+    def __post_init__(self):
+        if not isinstance(self.name, str) or not _SAFE_NAME.fullmatch(self.name):
+            raise ValueError(
+                "Source 1 bodygroup choice names must contain only lowercase "
+                "ASCII letters, digits, and underscores"
+            )
+        if self.document is not None and not isinstance(
+                self.document,
+                ModelDocument,
+        ):
+            raise TypeError("Source 1 bodygroup geometry must be a ModelDocument")
+
+
+@dataclass(frozen=True, slots=True)
+class Source1Bodygroup:
+    name: str
+    choices: tuple[Source1BodygroupChoice, ...]
+
+    def __post_init__(self):
+        _text(self.name, "Source 1 bodygroup name")
+        choices = tuple(self.choices)
+        if not choices or any(
+                not isinstance(choice, Source1BodygroupChoice)
+                for choice in choices
+        ):
+            raise ValueError(
+                "Source 1 bodygroups require one or more typed choices"
+            )
+        names = tuple(choice.name.casefold() for choice in choices)
+        if len(set(names)) != len(names):
+            raise ValueError("Source 1 bodygroup choice names must be unique")
+        object.__setattr__(self, "choices", choices)
+
+
+@dataclass(frozen=True, slots=True)
+class Source1SkinFamily:
+    materials: tuple[str, ...]
+
+    def __post_init__(self):
+        materials = tuple(self.materials)
+        if not materials:
+            raise ValueError("Source 1 skin families cannot be empty")
+        for material in materials:
+            _text(material, "Source 1 skin material name")
+            if (
+                    "/" in material
+                    or "\\" in material
+                    or material.casefold().endswith(".vmt")
+            ):
+                raise ValueError(
+                    "Source 1 skin materials must be bare VMT names without "
+                    "an extension"
+                )
+        object.__setattr__(self, "materials", materials)
+
+
+@dataclass(frozen=True, slots=True)
+class Source1Attachment:
+    name: str
+    bone: str
+    position: tuple[float, float, float]
+    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    def __post_init__(self):
+        _text(self.name, "Source 1 attachment name")
+        _text(self.bone, "Source 1 attachment bone")
+        object.__setattr__(
+            self,
+            "position",
+            _vector3(self.position, "Source 1 attachment position"),
+        )
+        object.__setattr__(
+            self,
+            "rotation",
+            _vector3(self.rotation, "Source 1 attachment rotation"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Source1Hitbox:
+    group: int
+    bone: str
+    minimum: tuple[float, float, float]
+    maximum: tuple[float, float, float]
+
+    def __post_init__(self):
+        if not isinstance(self.group, int) or self.group < 0:
+            raise ValueError(
+                "Source 1 hitbox groups must be non-negative integers"
+            )
+        _text(self.bone, "Source 1 hitbox bone")
+        minimum = _vector3(self.minimum, "Source 1 hitbox minimum")
+        maximum = _vector3(self.maximum, "Source 1 hitbox maximum")
+        if any(lower > upper for lower, upper in zip(minimum, maximum)):
+            raise ValueError(
+                "Source 1 hitbox minimum must not exceed its maximum"
+            )
+        object.__setattr__(self, "minimum", minimum)
+        object.__setattr__(self, "maximum", maximum)
+
+
+@dataclass(frozen=True, slots=True)
+class Source1Bone:
+    name: str
+    parent: int
+    position: tuple[float, float, float]
+    rotation: tuple[float, float, float]
+
+    def __post_init__(self):
+        _text(self.name, "Source 1 bone name")
+        if not isinstance(self.parent, int) or self.parent < -1:
+            raise ValueError("Source 1 bone parents must be integer indices or -1")
+        object.__setattr__(
+            self,
+            "position",
+            _vector3(self.position, "Source 1 bone position"),
+        )
+        object.__setattr__(
+            self,
+            "rotation",
+            _vector3(self.rotation, "Source 1 bone rotation"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Source1Skeleton:
+    bones: tuple[Source1Bone, ...]
+
+    def __post_init__(self):
+        bones = tuple(self.bones)
+        if not bones or any(not isinstance(bone, Source1Bone) for bone in bones):
+            raise ValueError(
+                "Source 1 skeletons require one or more typed bones"
+            )
+        names = tuple(bone.name.casefold() for bone in bones)
+        if len(set(names)) != len(names):
+            raise ValueError("Source 1 skeleton bone names must be unique")
+        for index, bone in enumerate(bones):
+            if bone.parent >= index:
+                raise ValueError(
+                    "Source 1 skeleton parents must precede their children"
+                )
+        object.__setattr__(self, "bones", bones)
+
+
+@dataclass(frozen=True, slots=True)
 class Source1ExtractedAuthoringModel(ExtractedAuthoringModel):
     collision: Source1AuthoringCollision | None = None
     lods: tuple[Source1AuthoringLod, ...] = ()
+    bodygroups: tuple[Source1Bodygroup, ...] = ()
+    skin_families: tuple[Source1SkinFamily, ...] = ()
+    attachments: tuple[Source1Attachment, ...] = ()
+    hitboxes: tuple[Source1Hitbox, ...] = ()
+    skeleton: Source1Skeleton | None = None
 
     def __post_init__(self):
         ExtractedAuthoringModel.__post_init__(self)
@@ -93,6 +269,29 @@ class Source1ExtractedAuthoringModel(ExtractedAuthoringModel):
         if len(set(distances)) != len(distances):
             raise ValueError("Source 1 LOD distances must be unique")
         object.__setattr__(self, "lods", lods)
+        for field_name, item_type in (
+                ("bodygroups", Source1Bodygroup),
+                ("skin_families", Source1SkinFamily),
+                ("attachments", Source1Attachment),
+                ("hitboxes", Source1Hitbox),
+        ):
+            values = tuple(getattr(self, field_name))
+            if any(not isinstance(value, item_type) for value in values):
+                raise TypeError(
+                    f"Source 1 {field_name.replace('_', ' ')} must contain "
+                    f"{item_type.__name__} values"
+                )
+            object.__setattr__(self, field_name, values)
+        bodygroup_names = tuple(
+            bodygroup.name.casefold() for bodygroup in self.bodygroups
+        )
+        if len(set(bodygroup_names)) != len(bodygroup_names):
+            raise ValueError("Source 1 bodygroup names must be unique")
+        if self.skeleton is not None and not isinstance(
+                self.skeleton,
+                Source1Skeleton,
+        ):
+            raise TypeError("Source 1 skeleton must be Source1Skeleton or None")
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +315,7 @@ class Source1AuthoringRequest:
     grouping: AuthoringGrouping = AuthoringGrouping.COMBINED
     overwrite: bool = False
     compile_after_export: bool = False
+    export_skeleton: bool = False
 
     def __post_init__(self):
         if not isinstance(self.target, Source1AuthoringTarget):
@@ -141,6 +341,8 @@ class Source1AuthoringRequest:
             object.__setattr__(self, "grouping", AuthoringGrouping(self.grouping))
         if not isinstance(self.surface_property, str):
             raise TypeError("surface_property must be a string")
+        if not isinstance(self.export_skeleton, bool):
+            raise TypeError("export_skeleton must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)

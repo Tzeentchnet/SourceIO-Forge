@@ -5,7 +5,7 @@
     blender -c sourceio extract-vtf [--output DIR] [--format tga|png] [--overwrite] FILE [FILE ...]
     blender -c sourceio export-cs2 --install-root ROOT --addon ADDON --asset NAME [--compile]
     blender -c sourceio recompile-cs2 --install-root ROOT --addon ADDON MANIFEST
-    blender -c sourceio export-source1 --game-root GAME --content-root CONTENT --asset NAME [--compile]
+    blender -c sourceio export-source1 --game-root GAME --content-root CONTENT --asset NAME [--skeletal] [--compile]
     blender -c sourceio recompile-source1 --game-root GAME --content-root CONTENT MANIFEST
 
 Imports each file with the same operator the File > Import menu uses, picked by extension, then
@@ -274,7 +274,7 @@ def execute(argv: list[str]) -> int:
     )
     source1_parser = commands.add_parser(
         "export-source1",
-        help="author an editable static Source 1 model/material/texture bundle",
+        help="author an editable Source 1 model/material/texture bundle",
     )
     source1_parser.add_argument(
         "--game-root",
@@ -305,6 +305,11 @@ def execute(argv: list[str]) -> int:
         "--batch",
         action="store_true",
         help="write one model per object instead of one combined model",
+    )
+    source1_parser.add_argument(
+        "--skeletal",
+        action="store_true",
+        help="export one armature, its rest pose, and mesh skin weights",
     )
     source1_parser.add_argument(
         "--overwrite",
@@ -443,6 +448,7 @@ def execute(argv: list[str]) -> int:
                 ),
                 overwrite=args.overwrite,
                 compile_after_export=args.compile,
+                export_skeleton=args.skeletal,
             )
             result = execute_source1_authoring(
                 bpy.context,

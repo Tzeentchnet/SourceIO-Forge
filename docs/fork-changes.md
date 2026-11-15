@@ -116,21 +116,23 @@ Current reproducible benchmark evidence is maintained in
 
 See [VTF editing](user-guide.md#editing-vtf-textures-and-sprite-sheets).
 
-## Static authoring
+## Asset authoring
 
 - Added non-destructive CS2 Workshop static-asset authoring with FBX, ModelDoc
   VMDL, VMAT, TGA, Resource Compiler integration, manifests, and recompile.
-- Added Source 1 static-asset authoring with SMD, QC, VMT, TGA, VTEX settings,
+- Added Source 1 asset authoring with validated SMD/VTA modeling, static or
+  skeletal reference SMD, typed bodygroups, skins, attachments, hitboxes,
   static collision and LOD collections, VTEX/StudioMDL integration, manifests,
   and recompile.
 - Added verified CS2 base color, normal, roughness, metalness, and alpha-test
   mappings.
 - Added Source 1 imported-VMT reuse, base color/tint, alpha, normal, two-sided,
-  and explicit phong authoring.
+  self-illumination, envmap, rim-light, explicit phong, and opt-in scalar
+  PBR-to-phong authoring.
 - Deprecated the incomplete export-node prototype while preserving `.blend`
   load compatibility.
 
-See [Static asset authoring](authoring.md).
+See [Asset authoring](authoring.md).
 
 ## Notable correctness fixes
 

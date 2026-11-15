@@ -86,12 +86,13 @@ them.
 
 ### Export
 
-Use *File > Export* for the supported CS2 Workshop and Source 1 static-asset
-workflows. SourceIO Forge writes editable source files and can optionally invoke
-the official compilers; it does not silently replace those tools with custom
-binary writers.
+Use *File > Export* for the supported CS2 Workshop static-asset and Source 1
+asset workflows. Source 1 supports static props and an opt-in skeletal
+reference slice. SourceIO Forge writes editable source files and can optionally
+invoke the official compilers; it does not silently replace those tools with
+custom binary writers.
 
-See [Static asset authoring](docs/authoring.md) for supported material graphs,
+See [Asset authoring](docs/authoring.md) for supported material graphs,
 target setup, compilation, and recompile behavior.
 
 ### Command line
@@ -110,7 +111,7 @@ Import, extraction, authoring, and recompile commands are documented in the
 
 - [User guide](docs/user-guide.md) — importing, drag and drop, map handling,
   texture caching, command-line commands, and VTF editing.
-- [Static asset authoring](docs/authoring.md) — CS2 Workshop and Source 1
+- [Asset authoring](docs/authoring.md) — CS2 Workshop and Source 1
   authoring, compiler integration, material limits, and reconstruction exports.
 - [Supported formats and game coverage](docs/formats.md).
 - [Development and testing](docs/development.md) — building packages, test

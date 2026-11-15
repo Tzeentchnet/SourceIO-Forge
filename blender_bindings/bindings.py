@@ -20,6 +20,7 @@ from .operators.source1_operators import (SOURCEIO_OT_SkyboxImport,
                                           SOURCEIO_OT_VTFImport)
 from .operators.source1_authoring_operators import (
     SOURCEIO_PT_Source1AuthoringCollection,
+    SOURCEIO_PT_Source1AuthoringObject,
     SOURCEIO_OT_Source1AuthoringExport,
     SOURCEIO_OT_Source1AuthoringRecompile,
     register_source1_collection_properties,
@@ -201,6 +202,7 @@ classes = [
     SOURCEIO_OT_MDLImport,
     SOURCEIO_OT_BSPImport,
     SOURCEIO_PT_Source1AuthoringCollection,
+    SOURCEIO_PT_Source1AuthoringObject,
     SOURCEIO_OT_Source1AuthoringExport,
     SOURCEIO_OT_Source1AuthoringRecompile,
 

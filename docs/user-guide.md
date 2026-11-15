@@ -120,7 +120,7 @@ Important options:
 
 `export-modeldoc` and `export-hammer` are lossy static reconstruction commands.
 `export-cs2` and `export-source1` are editable authoring workflows documented in
-[Static asset authoring](authoring.md).
+[Asset authoring](authoring.md).
 
 ## Editing VTF textures and sprite sheets
 

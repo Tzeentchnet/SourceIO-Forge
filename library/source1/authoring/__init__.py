@@ -1,6 +1,8 @@
 from .assets import (
     Source1AuthoringMaterial,
+    Source1MaterialParameters,
     Source1PhongParameters,
+    source1_pbr_to_phong,
 )
 from .backend import Source1AuthoringBackend
 from .compiler import (
@@ -31,15 +33,22 @@ from .manifest import (
 from .models import (
     Source1ArtifactKind,
     Source1ArtifactRoot,
+    Source1Attachment,
     Source1AuthoringArtifact,
     Source1AuthoringCollision,
     Source1AuthoringLod,
     Source1AuthoringRequest,
     Source1BackendOutput,
+    Source1Bone,
+    Source1Bodygroup,
+    Source1BodygroupChoice,
     Source1CompileOutput,
     Source1CompileStep,
     Source1CompilerKind,
     Source1ExtractedAuthoringModel,
+    Source1Hitbox,
+    Source1Skeleton,
+    Source1SkinFamily,
 )
 from .service import (
     Source1AuthoringExecutionResult,
@@ -56,6 +65,7 @@ from .target import (
 __all__ = [
     "Source1ArtifactKind",
     "Source1ArtifactRoot",
+    "Source1Attachment",
     "Source1AuthoringArtifact",
     "Source1AuthoringBackend",
     "Source1AuthoringCollision",
@@ -70,6 +80,9 @@ __all__ = [
     "Source1AuthoringTarget",
     "Source1AuthoringTargetError",
     "Source1BackendOutput",
+    "Source1Bone",
+    "Source1Bodygroup",
+    "Source1BodygroupChoice",
     "Source1CompileOutput",
     "Source1CompileStep",
     "Source1CompilerCaptureError",
@@ -85,13 +98,18 @@ __all__ = [
     "Source1CompilerTimeoutError",
     "Source1CompilerToolchain",
     "Source1ExtractedAuthoringModel",
+    "Source1Hitbox",
     "Source1ManifestArtifact",
+    "Source1MaterialParameters",
     "Source1PhongParameters",
+    "Source1Skeleton",
+    "Source1SkinFamily",
     "serialize_qc",
     "serialize_smd",
     "serialize_vmt",
     "serialize_vmt_patch",
     "serialize_vtex_settings",
+    "source1_pbr_to_phong",
     "stage_source1_artifacts",
     "validate_source1_request",
 ]

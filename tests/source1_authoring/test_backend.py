@@ -5,9 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from SourceIO.library.models.smd import parse as parse_smd
 from SourceIO.library.source1.authoring import (
     Source1ArtifactKind,
     Source1ArtifactRoot,
+    Source1Attachment,
     Source1AuthoringArtifact,
     Source1AuthoringBackend,
     Source1AuthoringCollision,
@@ -19,13 +21,21 @@ from SourceIO.library.source1.authoring import (
     Source1AuthoringService,
     Source1AuthoringTarget,
     Source1AuthoringTargetError,
+    Source1Bone,
+    Source1Bodygroup,
+    Source1BodygroupChoice,
     Source1ExtractedAuthoringModel,
+    Source1Hitbox,
+    Source1MaterialParameters,
     Source1PhongParameters,
+    Source1Skeleton,
+    Source1SkinFamily,
     serialize_qc,
     serialize_smd,
     serialize_vmt,
     serialize_vmt_patch,
     serialize_vtex_settings,
+    source1_pbr_to_phong,
     stage_source1_artifacts,
 )
 from SourceIO.library.source2.authoring import (
@@ -223,6 +233,69 @@ def test_source1_phong_and_existing_vmt_patch_are_explicit():
     )
 
 
+def test_typed_vmt_parameters_and_explicit_scalar_pbr_conversion(tmp_path):
+    phong = source1_pbr_to_phong(0.5, 0.5)
+    assert phong.exponent == pytest.approx(30.0)
+    assert phong.boost == pytest.approx(0.625)
+    assert phong.albedo_tint
+    material = Source1AuthoringMaterial(
+        "crate",
+        metallic=0.5,
+        roughness=0.5,
+        phong=Source1PhongParameters(
+            exponent=phong.exponent,
+            boost=phong.boost,
+            albedo_tint=True,
+            rim_light=True,
+            rim_exponent=4.0,
+            rim_boost=2.0,
+        ),
+        parameters=Source1MaterialParameters(
+            self_illum=True,
+            self_illum_tint=(0.25, 0.5, 0.75),
+            envmap="env_cubemap",
+            envmap_tint=(0.5, 0.5, 0.5),
+            envmap_contrast=0.25,
+            envmap_saturation=0.75,
+        ),
+        pbr_converted=True,
+    )
+
+    output = Source1AuthoringBackend().build(
+        Source1AuthoringRequest(_target(tmp_path), "crate"),
+        (_model(material=material),),
+    )
+
+    assert not output.report.has_errors
+    vmt = next(
+        artifact.payload for artifact in output.artifacts
+        if artifact.kind == Source1ArtifactKind.MATERIAL
+    )
+    assert '"$phongexponent" "30"' in vmt
+    assert '"$phongboost" "0.625"' in vmt
+    assert '"$phongalbedotint" "1"' in vmt
+    assert '"$rimlight" "1"' in vmt
+    assert '"$rimlightexponent" "4"' in vmt
+    assert '"$rimlightboost" "2"' in vmt
+    assert '"$selfillum" "1"' in vmt
+    assert '"$selfillumtint" "[0.25 0.5 0.75]"' in vmt
+    assert '"$envmap" "env_cubemap"' in vmt
+    assert '"$envmaptint" "[0.5 0.5 0.5]"' in vmt
+    assert '"$envmapcontrast" "0.25"' in vmt
+    assert '"$envmapsaturation" "0.75"' in vmt
+
+
+def test_typed_vmt_parameters_reject_unsafe_dependencies():
+    with pytest.raises(ValueError, match="requires self-illumination"):
+        Source1MaterialParameters(self_illum_tint=(1, 1, 1))
+    with pytest.raises(ValueError, match="safe material-relative"):
+        Source1MaterialParameters(envmap="../escape.vtf")
+    with pytest.raises(ValueError, match="require an envmap"):
+        Source1MaterialParameters(envmap_contrast=1.0)
+    with pytest.raises(ValueError, match="require rim lighting"):
+        Source1PhongParameters(rim_boost=1.0)
+
+
 def test_backend_reuses_existing_vmt_through_local_patch(tmp_path):
     target = _target(tmp_path)
     request = Source1AuthoringRequest(target, "crate")
@@ -412,6 +485,147 @@ def test_collision_and_lod_specs_reject_invalid_values():
                 Source1AuthoringLod(10, document),
             ),
         )
+
+
+def test_backend_authors_typed_bodygroups_skins_attachments_and_hitboxes(
+        tmp_path,
+):
+    target = _target(tmp_path)
+    request = Source1AuthoringRequest(target, "crate")
+    model = _model()
+    source1_model = Source1ExtractedAuthoringModel(
+        model.name,
+        model.document,
+        model.fbx_payload,
+        model.materials,
+        bodygroups=(
+            Source1Bodygroup(
+                "accessory",
+                (
+                    Source1BodygroupChoice("blank", None),
+                    Source1BodygroupChoice("crate", _document()),
+                ),
+            ),
+        ),
+        skin_families=(
+            Source1SkinFamily(("crate",)),
+            Source1SkinFamily(("crate_blue",)),
+        ),
+        attachments=(
+            Source1Attachment(
+                "muzzle",
+                "root",
+                (1.0, 2.0, 3.0),
+                (10.0, 20.0, 30.0),
+            ),
+        ),
+        hitboxes=(
+            Source1Hitbox(
+                1,
+                "root",
+                (-1.0, -2.0, -3.0),
+                (1.0, 2.0, 3.0),
+            ),
+        ),
+    )
+
+    output = Source1AuthoringBackend().build(request, (source1_model,))
+
+    assert not output.report.has_errors
+    paths = {artifact.path.as_posix() for artifact in output.artifacts}
+    assert (
+        "modelsrc/sourceio/crate/crate_bodygroup1_crate.smd"
+        in paths
+    )
+    qc = next(
+        artifact.payload for artifact in output.artifacts
+        if artifact.kind == Source1ArtifactKind.MODEL_SCRIPT
+    )
+    assert '$bodygroup "accessory"' in qc
+    assert "    blank" in qc
+    assert '    studio "crate_bodygroup1_crate.smd"' in qc
+    assert '$texturegroup "skinfamilies"' in qc
+    assert '    { "crate" }' in qc
+    assert '    { "crate_blue" }' in qc
+    assert (
+        '$attachment "muzzle" "root" 1 2 3 rotate 10 20 30'
+        in qc
+    )
+    assert '$hbox 1 "root" -1 -2 -3 1 2 3' in qc
+
+
+def test_typed_qc_models_reject_unsafe_or_inconsistent_values():
+    with pytest.raises(ValueError, match="lowercase ASCII"):
+        Source1BodygroupChoice("../escape", None)
+    with pytest.raises(ValueError, match="bare VMT"):
+        Source1SkinFamily(("materials/crate.vmt",))
+    with pytest.raises(ValueError, match="minimum"):
+        Source1Hitbox(0, "root", (1, 0, 0), (0, 1, 1))
+    with pytest.raises(ValueError, match="non-negative"):
+        Source1Hitbox(-1, "root", (0, 0, 0), (1, 1, 1))
+    with pytest.raises(ValueError, match="finite"):
+        Source1Attachment("muzzle", "root", (0, 0, float("nan")))
+
+
+def test_backend_rejects_mismatched_skin_family_width(tmp_path):
+    target = _target(tmp_path)
+    request = Source1AuthoringRequest(target, "crate")
+    model = _model()
+    source1_model = Source1ExtractedAuthoringModel(
+        model.name,
+        model.document,
+        model.fbx_payload,
+        model.materials,
+        skin_families=(
+            Source1SkinFamily(("crate", "extra")),
+        ),
+    )
+
+    output = Source1AuthoringBackend().build(request, (source1_model,))
+
+    assert "authoring.source1.skin.width_mismatch" in {
+        diagnostic.code for diagnostic in output.report
+    }
+
+
+def test_backend_authors_weighted_skeletal_smd_without_staticprop(tmp_path):
+    target = _target(tmp_path)
+    request = Source1AuthoringRequest(
+        target,
+        "crate",
+        export_skeleton=True,
+    )
+    document = _document()
+    for vertex in document.meshes[0].vertices:
+        vertex.corner.bone_indices = (0, 1)
+        vertex.corner.bone_weights = (0.25, 0.75)
+    skeleton = Source1Skeleton((
+        Source1Bone("root", -1, (0, 0, 0), (0, 0, 0)),
+        Source1Bone("child", 0, (0, 0, 8), (0, 0, 0)),
+    ))
+    model = Source1ExtractedAuthoringModel(
+        "crate",
+        document,
+        b"",
+        (_material(),),
+        skeleton=skeleton,
+    )
+
+    output = Source1AuthoringBackend().build(request, (model,))
+
+    assert not output.report.has_errors
+    source = next(
+        artifact.payload for artifact in output.artifacts
+        if artifact.path.suffix == ".smd"
+    )
+    parsed = parse_smd(source)
+    assert [node.name for node in parsed.nodes] == ["root", "child"]
+    assert "  1 0 0 0 0 0 1 0 0 2 1 0.75 0 0.25" in source
+    qc = next(
+        artifact.payload for artifact in output.artifacts
+        if artifact.kind == Source1ArtifactKind.MODEL_SCRIPT
+    )
+    assert "$staticprop" not in qc
 
 
 def test_service_writes_manifest_report_and_artifacts(tmp_path):

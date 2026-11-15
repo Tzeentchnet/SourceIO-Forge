@@ -14,7 +14,8 @@ resource variation is understood.
 | `.vtf` | Source texture | Import and direct export | Import preserves sprite sheets and metadata. External-edit export writes image data, `.sht`, `.mks`, and JSON. |
 | `.tth` / `.ttz` | Split compressed VTF texture | Material import | Reconstructs the VTF and preserves its metadata on the Blender image. |
 | `.vmt` | Source material or skybox | Import | Skybox import reads all six faces. |
-| `.smd`, `.qc`, `.vmt`, `.tga` | Editable Source 1 static asset | Authoring output | Optional compilation through official VTEX and StudioMDL tools. |
+| `.smd`, `.qc`, `.vmt`, `.tga` | Editable Source 1 asset | Authoring output | Static props and opt-in skeletal references; optional compilation through official VTEX and StudioMDL tools. |
+| `.smd`, `.vta` | Source 1 model interchange | Library parse and deterministic dump | Blender-free validated model API; Blender VTA/flex authoring is not yet exposed. |
 
 ## Source 2 and DMX
 
@@ -36,7 +37,7 @@ resource variation is understood.
 
 Source 2 authoring files without the compiled `_c` suffix are not import
 targets. The authoring and reconstruction workflows are described in
-[Static asset authoring](authoring.md).
+[Asset authoring](authoring.md).
 
 ## Texture and animation notes
 

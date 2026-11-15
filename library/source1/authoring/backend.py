@@ -123,6 +123,7 @@ class Source1AuthoringBackend:
                 material_specs[material.name] = material
 
             material_names = frozenset(material.name for material in model.materials)
+            material_order = tuple(material.name for material in model.materials)
             reference_materials = _document_materials(model.document)
             source1_model = (
                 model
@@ -131,13 +132,66 @@ class Source1AuthoringBackend:
             )
             collision = source1_model.collision if source1_model is not None else None
             lods = source1_model.lods if source1_model is not None else ()
+            bodygroups = (
+                source1_model.bodygroups if source1_model is not None else ()
+            )
+            skin_families = (
+                source1_model.skin_families if source1_model is not None else ()
+            )
+            attachments = (
+                source1_model.attachments if source1_model is not None else ()
+            )
+            hitboxes = (
+                source1_model.hitboxes if source1_model is not None else ()
+            )
+            skeleton = (
+                source1_model.skeleton if source1_model is not None else None
+            )
+            available_bones = (
+                {bone.name for bone in skeleton.bones}
+                if skeleton is not None
+                else {"root"}
+            )
+            for item_kind, items in (
+                    ("attachment", attachments),
+                    ("hitbox", hitboxes),
+            ):
+                for item in items:
+                    if item.bone not in available_bones:
+                        loss_report.record(
+                            f"authoring.source1.{item_kind}.bone_missing",
+                            f"Source 1 {item_kind} references a bone that is "
+                            "not present in the exported skeleton.",
+                            severity=DiagnosticSeverity.ERROR,
+                            loss_kind=LossKind.MISSING,
+                            details={
+                                "model": model.name,
+                                item_kind: item.name
+                                if item_kind == "attachment"
+                                else item.group,
+                                "bone": item.bone,
+                            },
+                        )
+            if skeleton is not None and collision is not None:
+                loss_report.record(
+                    "authoring.source1.skeletal_collision.deferred",
+                    "The initial skeletal Source 1 slice does not yet support "
+                    "jointed collision geometry.",
+                    severity=DiagnosticSeverity.ERROR,
+                    loss_kind=LossKind.DEFERRED,
+                    details={"model": model.name},
+                )
             smd_name = f"{model.name}.smd"
             smd_path = asset_model_source.joinpath(smd_name)
             qc_path = asset_model_source.joinpath(f"{model.name}.qc")
             compiled_model = asset_model_directory.joinpath(f"{model.name}.mdl")
             model_paths.append(compiled_model)
             try:
-                smd = serialize_smd(model.document, material_names)
+                smd = serialize_smd(
+                    model.document,
+                    material_names,
+                    skeleton=skeleton,
+                )
             except ValueError as exc:
                 loss_report.record(
                     "authoring.source1.smd.invalid",
@@ -153,6 +207,96 @@ class Source1AuthoringBackend:
                 Source1ArtifactKind.MODEL_SOURCE,
                 smd,
             ))
+            bodygroup_qc_entries = []
+            for bodygroup_index, bodygroup in enumerate(bodygroups, start=1):
+                choice_paths = []
+                for choice in bodygroup.choices:
+                    if choice.document is None:
+                        choice_paths.append(None)
+                        continue
+                    choice_smd_name = (
+                        f"{model.name}_bodygroup{bodygroup_index}_"
+                        f"{choice.name}.smd"
+                    )
+                    choice_smd_path = asset_model_source.joinpath(
+                        choice_smd_name
+                    )
+                    if not _document_has_faces(choice.document):
+                        loss_report.record(
+                            "authoring.source1.bodygroup.empty",
+                            "Source 1 bodygroup geometry must contain at least "
+                            "one face.",
+                            severity=DiagnosticSeverity.ERROR,
+                            loss_kind=LossKind.MISSING,
+                            details={
+                                "model": model.name,
+                                "bodygroup": bodygroup.name,
+                                "choice": choice.name,
+                            },
+                        )
+                    try:
+                        choice_smd = serialize_smd(
+                            choice.document,
+                            material_names,
+                            skeleton=skeleton,
+                        )
+                    except ValueError as exc:
+                        loss_report.record(
+                            "authoring.source1.bodygroup.smd.invalid",
+                            str(exc),
+                            severity=DiagnosticSeverity.ERROR,
+                            loss_kind=LossKind.SAFETY,
+                            details={
+                                "model": model.name,
+                                "bodygroup": bodygroup.name,
+                                "choice": choice.name,
+                            },
+                        )
+                        choice_smd = ""
+                    add_artifact(Source1AuthoringArtifact(
+                        Source1ArtifactRoot.CONTENT,
+                        choice_smd_path,
+                        Source1ArtifactKind.MODEL_SOURCE,
+                        choice_smd,
+                    ))
+                    choice_paths.append(choice_smd_name)
+                bodygroup_qc_entries.append(
+                    (bodygroup.name, tuple(choice_paths))
+                )
+            if skin_families:
+                expected_width = len(material_order)
+                if any(
+                        len(family.materials) != expected_width
+                        for family in skin_families
+                ):
+                    loss_report.record(
+                        "authoring.source1.skin.width_mismatch",
+                        "Every Source 1 skin family must contain one material "
+                        "for each authored base material.",
+                        severity=DiagnosticSeverity.ERROR,
+                        loss_kind=LossKind.SAFETY,
+                        details={
+                            "model": model.name,
+                            "expected": expected_width,
+                            "actual": [
+                                len(family.materials)
+                                for family in skin_families
+                            ],
+                        },
+                    )
+                elif skin_families[0].materials != material_order:
+                    loss_report.record(
+                        "authoring.source1.skin.default_mismatch",
+                        "The first Source 1 skin family must match the authored "
+                        "base-material order.",
+                        severity=DiagnosticSeverity.ERROR,
+                        loss_kind=LossKind.SAFETY,
+                        details={
+                            "model": model.name,
+                            "expected": material_order,
+                            "actual": skin_families[0].materials,
+                        },
+                    )
             lod_qc_entries = []
             for index, lod in enumerate(lods, start=1):
                 lod_smd_name = f"{model.name}_lod{index}.smd"
@@ -184,7 +328,11 @@ class Source1AuthoringBackend:
                         },
                     )
                 try:
-                    lod_smd = serialize_smd(lod.document, material_names)
+                    lod_smd = serialize_smd(
+                        lod.document,
+                        material_names,
+                        skeleton=skeleton,
+                    )
                 except ValueError as exc:
                     loss_report.record(
                         "authoring.source1.lod.smd.invalid",
@@ -256,6 +404,13 @@ class Source1AuthoringBackend:
                         collision.concave if collision is not None else True
                     ),
                     lods=lod_qc_entries,
+                    bodygroups=bodygroup_qc_entries,
+                    skin_families=(
+                        family.materials for family in skin_families
+                    ),
+                    attachments=attachments,
+                    hitboxes=hitboxes,
+                    static_prop=skeleton is None,
                 ),
             ))
             compiled_stem = compiled_model.as_posix()[:-len(".mdl")]
@@ -344,7 +499,13 @@ class Source1AuthoringBackend:
                         "roles": unsupported_roles,
                     },
                 )
-            if material.metallic != 0.0 or material.roughness != 0.5:
+            if (
+                    (material.metallic != 0.0 or material.roughness != 0.5)
+                    and not (
+                        isinstance(material, Source1AuthoringMaterial)
+                        and material.pbr_converted
+                    )
+            ):
                 loss_report.record(
                     "authoring.source1.material.pbr_conversion_unsupported",
                     "Roughness and metalness are not implicitly converted to Source 1 phong parameters.",

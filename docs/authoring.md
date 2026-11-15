@@ -1,17 +1,17 @@
-# Static asset authoring
+# Asset authoring
 
-SourceIO provides two supported static-authoring workflows:
+SourceIO provides two supported authoring workflows:
 
 - **CS2 Workshop static asset** writes editable CS2 content and can run
   Resource Compiler.
-- **Source 1 static asset** writes editable SMD/QC/VMT/texture sources and can
-  run VTEX and StudioMDL.
+- **Source 1 asset** writes editable SMD/QC/VMT/texture sources for static
+  props or an opt-in skeletal reference model and can run VTEX and StudioMDL.
 
 Both workflows use the same non-destructive Blender extraction, preflight,
 atomic staging, manifest, diagnostics, and recompile model. Unsupported inputs
 fail before success is reported.
 
-These workflows author new static assets. The separate `export-modeldoc` and
+These workflows author new assets. The separate `export-modeldoc` and
 `export-hammer` commands reconstruct limited editable Source 2 files from
 Blender data and cannot recover information absent from compiled resources.
 
@@ -111,12 +111,12 @@ content and writes `sourceio/logs/<asset>.compile.log`.
 This is a CS2 static-asset workflow, not a Dota exporter, general Source 2
 binary exporter, skeletal exporter, or map-authoring tool.
 
-## Source 1 static assets
+## Source 1 assets
 
-Use *File > Export > Source 1 static asset* or:
+Use *File > Export > Source 1 asset* or:
 
 ```text
-blender -c sourceio export-source1 --game-root GAME --content-root CONTENT --asset NAME [--scope selected|collection|scene] [--batch] [--overwrite] [--compile]
+blender -c sourceio export-source1 --game-root GAME --content-root CONTENT --asset NAME [--scope selected|collection|scene] [--batch] [--skeletal] [--overwrite] [--compile]
 blender -c sourceio recompile-source1 --game-root GAME --content-root CONTENT MANIFEST
 ```
 
@@ -146,17 +146,19 @@ blender -c sourceio recompile-source1 sourceio/manifests/my_prop.sourceio.json
 
 The workflow emits:
 
-- static reference SMD plus optional collision and LOD SMDs;
-- deterministic QC;
+- a static or skeletal reference SMD, bodygroup-choice SMDs, and optional
+  static collision and LOD SMDs;
+- deterministic QC with typed bodygroups, skin families, attachments, and
+  hitboxes;
 - `VertexLitGeneric` VMT files;
 - 32-bit TGA source textures and VTEX settings;
 - deterministic manifest and preflight report;
 - bounded compile log when compilation fails.
 
-### Collision and LOD collections
+### Collision, LOD, and bodygroup collections
 
-Source 1 static assets can use tagged Blender collections for collision
-geometry and any number of LODs. Untagged scenes retain the existing
+Source 1 assets can use tagged Blender collections for collision geometry, any
+number of LODs, and bodygroup choices. Untagged scenes retain the existing
 reference-only behavior.
 
 Select a collection and open *Collection Properties > SourceIO Source 1
@@ -168,6 +170,9 @@ Authoring*, then assign one of these roles:
   permits multiple convex pieces.
 - **LOD:** replacement render geometry at the configured switch distance in
   Hammer units. Each LOD needs a unique positive distance.
+- **Bodygroup choice:** geometry for one named choice in a bodygroup, or an
+  explicit blank choice. Collections in the same bodygroup use the same
+  **Bodygroup** value and unique lowercase **Choice** values.
 
 Roles apply only to mesh objects inside the export operator's selected scope.
 When at least one collection is explicitly **Reference**, untagged objects are
@@ -176,11 +181,59 @@ all scoped meshes not assigned to collision or LOD collections remain
 reference geometry.
 
 Tagged collections must not overlap or nest in a way that assigns the same
-object more than one role. Collision and LOD authoring require **One combined
-model** grouping. Every LOD must use exactly the same material identities as
-the reference model. SourceIO evaluates modifiers and transforms
+object more than one role. Collision, LOD, and bodygroup authoring require
+**One combined model** grouping. Every LOD must use exactly the same material
+identities as the reference model. SourceIO evaluates modifiers and transforms
 non-destructively for every role and writes deterministic
-`<model>_collision.smd` and `<model>_lodN.smd` files.
+`<model>_collision.smd`, `<model>_lodN.smd`, and bodygroup-choice SMD files.
+
+### Skeletal reference models
+
+Enable **Skeletal reference** in the export dialog or pass `--skeletal`.
+Reference meshes must resolve to exactly one armature. SourceIO captures its
+rest-pose hierarchy and bind transforms, then maps evaluated vertex groups to
+exported bones by name. Every exported vertex must have at least one positive
+weight for a bone in that armature.
+
+LOD and bodygroup geometry use the same skeleton and weight rules. SourceIO
+temporarily evaluates the armature in its rest pose and restores its previous
+pose state even when extraction fails. Skeletal collision is deliberately
+blocked: this slice does not silently turn jointed physics into static
+collision.
+
+This is a reference-model vertical slice. Animation clips, flex/morph
+authoring, VTA generation from Blender shape keys, DMX export, and jointed
+physics are not included.
+
+### Skins, attachments, and hitboxes
+
+Add a `sourceio_source1_skins` custom property to a Blender material to define
+named skin replacements. Its value is a mapping from family names to bare
+replacement VMT names:
+
+```python
+material["sourceio_source1_skins"] = {
+    "blue": "crate_blue",
+    "red": "crate_red",
+}
+```
+
+SourceIO emits the authored materials as skin family zero, then emits named
+families deterministically. A material without a replacement in a family keeps
+its base name. Replacement VMTs are referenced by name; they must already
+exist or be authored separately.
+
+Tag scene objects in *Object Properties > SourceIO Source 1 Authoring*:
+
+- **Attachment** emits the object's transform relative to its target bone.
+- **Hitbox** emits the object's bounds and non-negative **Hitbox group**.
+- **Bone** overrides the target bone. Direct bone parenting takes precedence;
+  otherwise static assets use `root` and skeletal assets use the first
+  exported bone.
+
+An object cannot be both an attachment and a hitbox. An Empty used as a hitbox
+is treated as a cube with its display size; other object types use their
+bounding box.
 
 ### Supported materials
 
@@ -188,11 +241,25 @@ non-destructively for every role and writes deterministic
   `sourceio_export_source1_material_path` is reused through a local Patch VMT.
 - A direct Principled graph can author base color/tint, alpha test or blending,
   a default-strength tangent-space normal map, and two-sided state.
-- Roughness and metalness are not guessed into Source 1 phong controls.
 - Explicit phong uses `sourceio_source1_phong`; optional custom properties are
   `sourceio_source1_phong_exponent`, `sourceio_source1_phong_boost`,
   `sourceio_source1_phong_tint`, and
-  `sourceio_source1_phong_fresnel_ranges`.
+  `sourceio_source1_phong_fresnel_ranges`. Albedo-tinted highlights and rim
+  lighting use `sourceio_source1_phong_albedo_tint`,
+  `sourceio_source1_rimlight`, `sourceio_source1_rimlight_exponent`, and
+  `sourceio_source1_rimlight_boost`.
+- `sourceio_source1_selfillum` and `sourceio_source1_selfillum_tint` author
+  self-illumination. `sourceio_source1_envmap`, `sourceio_source1_envmap_tint`,
+  `sourceio_source1_envmap_contrast`, and
+  `sourceio_source1_envmap_saturation` author typed envmap controls.
+- `sourceio_source1_pbr_to_phong = True` explicitly converts scalar Principled
+  roughness and metallic values into deterministic phong exponent, boost, and
+  albedo-tint controls. Optional
+  `sourceio_source1_pbr_max_exponent` and
+  `sourceio_source1_pbr_dielectric_boost` values tune its bounded conversion.
+  Explicit phong and PBR conversion are mutually exclusive.
+- Roughness and metallic textures are not silently baked or reduced to
+  scalars; the current PBR conversion blocks them.
 - Unsupported procedural graphs and unrelated PBR slots block export.
 
 ### Compilation
@@ -209,9 +276,9 @@ compilation and SourceIO re-import. The SDK 2013 gate compiles into disposable
 mod/content roots; it never writes generated files into Valve's shipped game
 directories.
 
-This is a static-prop workflow. Skeletal models, animations, jointed physics,
-bodygroups, skins, flexes, attachments, and map authoring are outside the
-current slice.
+The Source 1 workflow supports static props and opt-in skeletal reference
+models. Animation clips, flexes, jointed physics, texture-driven PBR
+conversion, and map authoring remain outside the current slice.
 
 ## Static Source 2 reconstruction
 

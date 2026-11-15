@@ -10,16 +10,25 @@ import pytest
 from SourceIO.library.models.mdl.v49.mdl_file import MdlV49
 from SourceIO.library.source1.authoring import (
     Source1ArtifactRoot,
+    Source1Attachment,
     Source1AuthoringBackend,
+    Source1AuthoringMaterial,
     Source1AuthoringRequest,
     Source1AuthoringService,
     Source1AuthoringTarget,
+    Source1Bodygroup,
+    Source1BodygroupChoice,
+    Source1Bone,
+    Source1ExtractedAuthoringModel,
+    Source1Hitbox,
+    Source1MaterialParameters,
+    Source1Skeleton,
+    Source1SkinFamily,
+    source1_pbr_to_phong,
 )
 from SourceIO.library.source1.vtf import load_texture
 from SourceIO.library.source2.authoring import (
-    AuthoringMaterial,
     AuthoringTexture,
-    ExtractedAuthoringModel,
     MaterialAlphaMode,
     TextureRole,
     solid_color_tga,
@@ -48,19 +57,34 @@ def _configured_target() -> tuple[Source1AuthoringTarget, Path]:
     return Source1AuthoringTarget(game_root, content_root), install_root / "bin"
 
 
-def _model(name: str) -> ExtractedAuthoringModel:
+def _model(name: str) -> Source1ExtractedAuthoringModel:
     vertices = (
         MeshVertex(
             (0.0, 0.0, 0.0),
-            CornerData(normal=(0.0, 0.0, 1.0), texcoords=((0.0, 1.0),)),
+            CornerData(
+                normal=(0.0, 0.0, 1.0),
+                texcoords=((0.0, 1.0),),
+                bone_indices=(0,),
+                bone_weights=(1.0,),
+            ),
         ),
         MeshVertex(
             (16.0, 0.0, 0.0),
-            CornerData(normal=(0.0, 0.0, 1.0), texcoords=((1.0, 1.0),)),
+            CornerData(
+                normal=(0.0, 0.0, 1.0),
+                texcoords=((1.0, 1.0),),
+                bone_indices=(1,),
+                bone_weights=(1.0,),
+            ),
         ),
         MeshVertex(
             (0.0, 16.0, 0.0),
-            CornerData(normal=(0.0, 0.0, 1.0), texcoords=((0.0, 0.0),)),
+            CornerData(
+                normal=(0.0, 0.0, 1.0),
+                texcoords=((0.0, 0.0),),
+                bone_indices=(1,),
+                bone_weights=(1.0,),
+            ),
         ),
     )
     document = ModelDocument(
@@ -71,8 +95,10 @@ def _model(name: str) -> ExtractedAuthoringModel:
             (MeshFace((0, 1, 2), "probe"),),
         ),),
     )
-    material = AuthoringMaterial(
+    material = Source1AuthoringMaterial(
         "probe",
+        metallic=0.5,
+        roughness=0.5,
         alpha_mode=MaterialAlphaMode.MASK,
         alpha_cutoff=0.4,
         textures=(
@@ -96,8 +122,44 @@ def _model(name: str) -> ExtractedAuthoringModel:
                 extension=".tga",
             ),
         ),
+        phong=source1_pbr_to_phong(0.5, 0.5),
+        parameters=Source1MaterialParameters(
+            self_illum=True,
+            self_illum_tint=(0.8, 0.2, 0.1),
+            envmap="env_cubemap",
+        ),
+        pbr_converted=True,
     )
-    return ExtractedAuthoringModel(name, document, b"", (material,))
+    skeleton = Source1Skeleton((
+        Source1Bone("root", -1, (0, 0, 0), (0, 0, 0)),
+        Source1Bone("child", 0, (0, 0, 8), (0, 0, 0)),
+    ))
+    return Source1ExtractedAuthoringModel(
+        name,
+        document,
+        b"",
+        (material,),
+        bodygroups=(
+            Source1Bodygroup(
+                "accessory",
+                (
+                    Source1BodygroupChoice("blank", None),
+                    Source1BodygroupChoice("probe", document),
+                ),
+            ),
+        ),
+        skin_families=(
+            Source1SkinFamily(("probe",)),
+            Source1SkinFamily(("probe_blue",)),
+        ),
+        attachments=(
+            Source1Attachment("muzzle", "child", (0, 0, 1)),
+        ),
+        hitboxes=(
+            Source1Hitbox(1, "child", (-1, -1, -1), (1, 1, 1)),
+        ),
+        skeleton=skeleton,
+    )
 
 
 def _remove_tree(path: Path):
@@ -112,6 +174,7 @@ def test_source1_bundle_compiles_reimports_and_recompiles():
         target,
         asset_name,
         compile_after_export=True,
+        export_skeleton=True,
     )
     service = Source1AuthoringService()
     backend = Source1AuthoringBackend().build(
@@ -139,6 +202,7 @@ def test_source1_bundle_compiles_reimports_and_recompiles():
         assert mdl.header.name.replace("\\", "/") == (
             f"sourceio/{asset_name}/{asset_name}.mdl"
         )
+        assert {bone.name for bone in mdl.bones} >= {"root", "child"}
         for texture_name in ("probe_base_color", "probe_normal"):
             with (material_directory / f"{texture_name}.vtf").open("rb") as stream:
                 pixels, height, width = load_texture(stream, normalized=False)

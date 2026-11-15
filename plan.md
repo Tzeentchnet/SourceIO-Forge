@@ -9,17 +9,18 @@ Targets: **Blender 5.2.2 LTS** as the minimum/baseline and **Blender 5.3.0**
 as an additional compatibility gate. Blender 4.x compatibility is
 intentionally not maintained.
 
-Last reconciled: **2026-11-11**.
+Last reconciled: **2026-11-15**.
 
 ## Automated baseline
 
 | Gate | Current result |
 |---|---|
-| Renamed-module smoke | 639/639 modules; register/unregister/register passed on Blender 5.2.2 and 5.3.0 |
+| Renamed-module smoke | 640/640 modules; register/unregister/register passed on Blender 5.2.2 and 5.3.0 |
 | Public sample imports | 87 pass, 6 known, 0 warn, 0 fail |
-| Non-Blender tests | 607 passed, 7 skipped |
-| Blender tests excluding skins | 301 passed, 2 skipped, 17 warnings, 67 subtests on each of Blender 5.2.2 and 5.3.0 |
+| Non-Blender tests | 658 passed, 7 skipped |
+| Blender tests excluding skins | 310 passed, 2 skipped, 22 warnings, 67 subtests on each of Blender 5.2.2 and 5.3.0 |
 | Blender skin tests | 8 passed on each of Blender 5.2.2 and 5.3.0 |
+| Source 1 authoring focus | 67 parser/backend tests plus 13 Blender adapter tests on each of Blender 5.2.2 and 5.3.0 |
 | Source 1 material/NPR focus | 44 passed, 30 subtests on each of Blender 5.2.2 and 5.3.0 |
 | Source 1 `game_write` focus | 1 passed |
 | Windows extension package | Built successfully with both versioned NPR node assets; ID `sourceio`, minimum Blender 5.2.0 |
@@ -84,8 +85,8 @@ each game.
 |---|---|
 | Dota 2 Workshop Tools | Generated static model/material/texture fixture compiles and re-imports |
 | CS2 Workshop Tools | Three format/contract tests plus one Blender-authored base-color/normal/roughness/metalness/alpha-test round trip pass |
-| TF2 VTEX and StudioMDL | Source 1 toolchain contract and Blender-authored compile/recompile round trip pass; MDL/VVD/VTX/VTF outputs re-import |
-| Source SDK Base 2013 VTEX and StudioMDL | Singleplayer and Multiplayer compile, re-import, and manifest-recompile the same disposable generated fixture; each produces verified MDL v48, VVD, DX90 VTX, and two VTF outputs |
+| TF2 VTEX and StudioMDL | Weighted skeletal reference, bodygroup/blank choice, skins, attachment, hitbox, typed VMT, and scalar PBR conversion compile; generated bones are verified through MDL re-import |
+| Source SDK Base 2013 VTEX and StudioMDL | Singleplayer and Multiplayer compile, re-import, and manifest-recompile a disposable static collision/LOD fixture with typed skins, attachment, and VMT/PBR fields; each produces verified MDL v48, VVD, DX90 VTX, and two VTF outputs |
 | TF2 `mksheet` and VTEX | All 273 shipped sprite-sheet VTFs preserve sequences, timing, frame pixels, and original-sheet bytes through the supported rebuild paths |
 
 Generated fixtures and reports may be committed only when redistributable.

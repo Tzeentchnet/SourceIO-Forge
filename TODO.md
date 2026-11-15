@@ -28,11 +28,12 @@ be advertised.
 
 ### Source 1
 
-- [ ] Design opt-in roughness/metalness/AO conversion or baking presets with
-      visual regression tests.
+- [ ] Add opt-in roughness/metalness texture and AO baking presets with visual
+      regression tests.
 
-Any conversion must be explicit and reproducible; implicit PBR-to-Source-1
-conversion remains unsupported.
+Any conversion must be explicit and reproducible. Scalar roughness/metallic
+conversion has a deterministic opt-in path; implicit or texture-driven
+PBR-to-Source-1 conversion remains unsupported.
 
 ## Import improvements
 
@@ -88,9 +89,6 @@ shows meaningful cost.
 - [ ] Decide whether a unified multi-profile `export`/`recompile` CLI improves on
       the existing engine-specific commands; implement it only if it removes real
       duplication for users or automation.
-- [ ] Select the next non-static authoring slice and define its smallest
-      official-tool round trip before implementation.
-
 ## Parked authoring expansions
 
 These are desired capabilities, not scheduled commitments. Unpark one only with
@@ -99,11 +97,9 @@ acceptance gate.
 
 ### Models
 
-- [ ] Skeletal model authoring.
 - [ ] Animation authoring.
 - [ ] Flex and morph authoring.
 - [ ] Skeletal and jointed physics authoring.
-- [ ] Bodygroup, skin, and attachment authoring.
 
 ### Worlds
 
