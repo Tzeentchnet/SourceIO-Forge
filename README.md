@@ -16,9 +16,9 @@ upstream project.
 > [!NOTE]
 > **Validated Source 1 beta assets are supported.** This includes embedded
 > geometry and armatures, legacy model physics and materials, beta shader
-> aliases, and half-float `RGBA16161616F` VTF textures. Historical compiled
-> beta sequence records use a separate animation layout and are not yet
-> imported.
+> aliases, half-float `RGBA16161616F` VTF textures, and historical compiled
+> animations. MDL v32/v35 use fixed per-bone RLE records; transitional v39
+> uses sparse animation records and its pre-v44 sequence layout.
 
 ## Highlights
 

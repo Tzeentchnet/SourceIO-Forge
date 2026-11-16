@@ -90,15 +90,15 @@ embedded vertices, six VTX v6 DX7/DX80 companions, no VVD files, and two paired
 wrapperless PHY files.
 
 Synthetic tests persist the decoded layouts for MDL versions 32, 35, 36, and
-39, two- and three-bone VTX v6 records, modern and wrapperless PHY solids, and
-model-importer dispatch. The real imports produced identical results on Blender
-5.2.2 and 5.3.0:
+39, their historical animation and sequence records, two- and three-bone VTX
+v6 records, modern and wrapperless PHY solids, and model-importer dispatch. The
+real imports produced identical results on Blender 5.2.2 and 5.3.0:
 
-| Model | Render result | Armature | Physics result |
-|---|---|---:|---|
-| v32 plastic bucket | 108 vertices, 118 polygons, 1 material | 0 bones | 1 object, 16 vertices, 28 collision triangles |
-| v35 helper bones | 132 vertices, 220 polygons, 1 material | 5 bones | No paired PHY |
-| v39 water tower | 1,104 vertices, 828 polygons, 1 material | 0 bones | 20 objects, 186 vertices, 292 collision triangles |
+| Model | Render result | Armature | Animation result | Physics result |
+|---|---|---:|---|---|
+| v32 plastic bucket | 108 vertices, 118 polygons, 1 material | 0 bones | One-frame `@idle` decoded | 1 object, 16 vertices, 28 collision triangles |
+| v35 helper bones | 132 vertices, 220 polygons, 1 material | 5 bones | 100-frame `@idle`; 35 F-curves with 100 keys each | No paired PHY |
+| v39 water tower | 1,104 vertices, 828 polygons, 1 material | 0 bones | One-frame sparse `@idle` terminator decoded | 20 objects, 186 vertices, 292 collision triangles |
 
 The editable source-art gate parses all 13,982 SMD files
 (2,238,901,254 bytes) and all 76 VTA files (304,207,388 bytes), one document at
@@ -110,11 +110,16 @@ names, ordinary duplicate poses, negative or non-finite weights, and malformed
 sections. All eight assignment-style beta VMTs also resolve through supported
 shader handlers.
 
-The boundary is compiled beta animation: the v32/v35/v39 sequence tables do
-not match the later StudioMDL animation structures, so those embedded
-historical sequences are not imported. Geometry, armatures, materials, skins,
-VTX topology, and paired collision are covered without treating later layouts
-as compatible by assumption.
+Compiled beta animation is decoded through version-specific structures rather
+than treating later StudioMDL layouts as compatible. MDL v32/v35 use 92-byte
+descriptors, fixed 32-byte records per bone, and 4,284-byte sequence records;
+v39 keeps the 92-byte descriptor but uses sparse animation records and a
+208-byte pre-`baseptr` sequence. The archive's editable `Helperbones_bend.smd`
+matches decoded v35 rotations through frame 98 within quantization tolerance;
+the compiler replaces frame 99 with the loop-closing pose. The available v39
+asset contains only a static terminator, so genuinely animated v39 channel data
+remains a narrower evidence boundary. Movement, IK, and autolayer playback are
+not emulated.
 
 ## Official-tool gates
 

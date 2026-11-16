@@ -1,6 +1,7 @@
 from typing import Optional
 
 from ..model_tags import register_model_importer
+from ..common import import_animations_common
 from .import_mdl import import_model, import_materials
 from ...operators.import_settings_base import ModelOptions
 from ...shared.exceptions import RequiredFileNotFound
@@ -58,6 +59,19 @@ def import_mdl36(model_path: TinyPath, buffer: Buffer,
         else:
             phy = Phy.from_buffer(phy_buffer)
             import_physics(phy, phy_buffer, mdl, container, options.scale)
+
+    if options.import_animations and container.armature:
+        import_animations_common(
+            mdl,
+            buffer,
+            content_manager,
+            model_path.parts[-1],
+            options.scale,
+            options.compact_animations,
+            options.import_include_animations,
+            container.armature,
+            delta_animations_to_nla=getattr(options, "delta_animations_to_nla", False),
+        )
 
     # useful for external python scripts using SourceIO as a module
     container.mdl = mdl

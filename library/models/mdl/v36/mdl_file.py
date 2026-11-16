@@ -8,6 +8,8 @@ from ..structs.bodygroup import BodyPart
 from ..structs.bone import Bone
 from ..structs.flex import FlexController, FlexOpType, FlexRule
 from ..structs.header import MdlHeaderV36
+from ..structs.legacy_animation import LegacyAnimDesc
+from ..structs.legacy_sequence import LegacySequence
 from ..structs.material import MaterialV36
 from ..flex_expressions import *
 from ....utils import Buffer
@@ -29,6 +31,9 @@ class MdlV36(Mdl):
     body_parts: list[BodyPart]
 
     attachments: list[Attachment]
+    anim_descs: list[LegacyAnimDesc]
+    sequences: list[LegacySequence]
+    include_models: list[str]
 
     bone_table_by_name = []
 
@@ -92,8 +97,33 @@ class MdlV36(Mdl):
             body_part = BodyPart.from_buffer(buffer, header.version)
             body_parts.append(body_part)
 
+        anim_descs = []
+        buffer.seek(header.local_animation_offset)
+        for _ in range(header.local_animation_count):
+            anim_descs.append(LegacyAnimDesc.from_buffer(buffer, header.version))
+
+        if header.version == 39:
+            sequence_count = header.v39_sequence_count
+            sequence_offset = header.v39_sequence_offset
+        else:
+            sequence_count = header.local_sequence_count
+            sequence_offset = header.local_sequence_offset
+
+        sequences = []
+        buffer.seek(sequence_offset)
+        for _ in range(sequence_count):
+            sequences.append(LegacySequence.from_buffer(buffer, header.version))
+
+        for sequence in sequences:
+            for anim_desc_index in sequence.anim_desc_indices:
+                if not 0 <= anim_desc_index < len(anim_descs):
+                    raise ValueError(
+                        f"Sequence {sequence.name!r} references animation {anim_desc_index}, "
+                        f"but the MDL has {len(anim_descs)} animation descriptions"
+                    )
+
         return cls(header, bones, skin_groups, materials, materials_paths, flex_names, flex_controllers, flex_rules,
-                   body_parts, attachments)
+                   body_parts, attachments, anim_descs, sequences, [])
 
     def rebuild_flex_rules(self):
         rules = {}

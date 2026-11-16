@@ -108,6 +108,10 @@ class MdlHeaderV36:
     local_animation_offset: int
     local_sequence_count: int
     local_sequence_offset: int
+    v39_sequence_aux_count: int
+    v39_sequence_aux_offset: int
+    v39_sequence_count: int
+    v39_sequence_offset: int
     sequences_indexed_flag: int
     sequence_group_count: int
     sequence_group_offset: int
@@ -180,8 +184,11 @@ class MdlHeaderV36:
         local_animation_count, local_animation_offset = buffer.read_fmt('2I')
         local_sequence_count, local_sequence_offset = buffer.read_fmt('2I')
         if version == 39:
-            # This beta layout carries two additional legacy count/offset pairs.
-            buffer.skip(4 * 4)
+            v39_sequence_aux_count, v39_sequence_aux_offset = buffer.read_fmt('2I')
+            v39_sequence_count, v39_sequence_offset = buffer.read_fmt('2I')
+        else:
+            v39_sequence_aux_count = v39_sequence_aux_offset = 0
+            v39_sequence_count = v39_sequence_offset = 0
         sequences_indexed_flag, sequence_group_count = buffer.read_fmt('2I')
         sequence_group_offset = buffer.read_int32()
 
@@ -212,7 +219,9 @@ class MdlHeaderV36:
         return cls(version, checksum, name, file_size, eye_position, illumination_position, hull_min, hull_max,
                    view_bbox_min, view_bbox_max, flags, bone_count, bone_offset, bone_controller_count,
                    bone_controller_offset, hitbox_set_count, hitbox_set_offset, local_animation_count,
-                   local_animation_offset, local_sequence_count, local_sequence_offset, sequences_indexed_flag,
+                   local_animation_offset, local_sequence_count, local_sequence_offset,
+                   v39_sequence_aux_count, v39_sequence_aux_offset, v39_sequence_count, v39_sequence_offset,
+                   sequences_indexed_flag,
                    sequence_group_count, sequence_group_offset, texture_count,
                    texture_offset, texture_path_count, texture_path_offset, skin_reference_count, skin_family_count,
                    skin_family_offset, body_part_count, body_part_offset, local_attachment_count,

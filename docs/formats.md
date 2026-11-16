@@ -65,9 +65,12 @@ targets. The authoring and reconstruction workflows are described in
 - VCS metadata is used for packed-channel interpretation only when its meaning
   is unambiguous.
 - Source 1 model animation support covers common MDL versions and include
-  models. Historical compiled sequence records in HL2 beta MDL versions
-  32, 35, and 39 are not currently decoded; their geometry, armatures,
-  materials, and paired physics remain importable.
+  models. HL2 beta MDL v32/v35 fixed per-bone RLE animations and 4,284-byte
+  sequence records are decoded separately from transitional v39 sparse
+  animations and its 208-byte pre-`baseptr` sequence records. The available
+  corpus validates a 100-frame v35 skeletal animation and v32/v39 static
+  sequences; movement, IK, and autolayer playback remain outside this format
+  parser.
 - Source 2 animation support includes embedded animations, animation groups,
   older NTRO resources, additive motion, root motion, morph/user/data channels,
   and animation-graph clips.
